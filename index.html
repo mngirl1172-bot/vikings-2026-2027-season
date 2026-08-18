@@ -105,6 +105,36 @@
     text-align:left;
   }
   .winner-note strong { color:#fff; }
+  .payout-box {
+    margin-top:14px;
+    padding:14px 16px;
+    border-radius:12px;
+    background:#111016;
+    border:1px solid #4a3655;
+    text-align:left;
+  }
+  .payout-box h3 { margin:0 0 10px; }
+  .score-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .score-grid input {
+    width:100%;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #51475a;
+    background:#0d0c10;
+    color:#fff;
+  }
+  .payout-result {
+    margin-top:10px;
+    padding:10px;
+    border-radius:8px;
+    background:#19131f;
+    line-height:1.45;
+  }
   .winner-example { color:#b991d0; font-size:14px; margin-top:6px; }
   .result-row {
     display:flex; justify-content:space-between; gap:12px;
@@ -157,7 +187,7 @@
 
 <header>
   <h1>🏈 Minnesota Vikings Pick a Square!</h1>
-  <p class="subtitle">Pick one square per week. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
+  <p class="subtitle">Pick one square per game, including preseason. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
   <div class="nav" id="nav"></div>
 </header>
 
@@ -167,7 +197,7 @@
   <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset Board</button>
 </div>
 <p class="footer-note">
-  One square per person each week. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added.
+  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
 </p>
 
 <div class="modal hidden" id="adminModal">
@@ -192,31 +222,59 @@
 
 <script>
 const games = [
-  {week:1, date:"Sunday, September 13", time:"3:25 PM CT", opponent:"Green Bay Packers", location:"HOME", kickoff:"2026-09-13T15:25:00-05:00"},
-  {week:2, date:"Sunday, September 20", time:"12:00 PM CT", opponent:"Chicago Bears", location:"AWAY", kickoff:"2026-09-20T12:00:00-05:00"},
-  {week:3, date:"Sunday, September 27", time:"3:05 PM CT", opponent:"Tampa Bay Buccaneers", location:"AWAY", kickoff:"2026-09-27T15:05:00-05:00"},
-  {week:4, date:"Sunday, October 4", time:"3:05 PM CT", opponent:"Miami Dolphins", location:"HOME", kickoff:"2026-10-04T15:05:00-05:00"},
-  {week:5, date:"Sunday, October 11", time:"12:00 PM CT", opponent:"New Orleans Saints", location:"AWAY", kickoff:"2026-10-11T12:00:00-05:00"},
-  {week:7, date:"Sunday, October 25", time:"12:00 PM CT", opponent:"Indianapolis Colts", location:"HOME", kickoff:"2026-10-25T12:00:00-05:00"},
-  {week:8, date:"Sunday, November 1", time:"12:00 PM CT", opponent:"Detroit Lions", location:"AWAY", kickoff:"2026-11-01T12:00:00-06:00"},
-  {week:9, date:"Monday, November 9", time:"7:15 PM CT", opponent:"Buffalo Bills", location:"HOME", kickoff:"2026-11-09T19:15:00-06:00"},
-  {week:10, date:"Sunday, November 15", time:"12:00 PM CT", opponent:"Green Bay Packers", location:"AWAY", kickoff:"2026-11-15T12:00:00-06:00"},
-  {week:11, date:"Sunday, November 22", time:"7:20 PM CT", opponent:"San Francisco 49ers", location:"HOME • MEXICO CITY", kickoff:"2026-11-22T19:20:00-06:00"},
-  {week:12, date:"Sunday, November 29", time:"12:00 PM CT", opponent:"Atlanta Falcons", location:"HOME", kickoff:"2026-11-29T12:00:00-06:00"},
-  {week:13, date:"Sunday, December 6", time:"3:25 PM CT", opponent:"Carolina Panthers", location:"HOME", kickoff:"2026-12-06T15:25:00-06:00"},
-  {week:14, date:"Thursday, December 10", time:"7:15 PM CT", opponent:"New England Patriots", location:"AWAY", kickoff:"2026-12-10T19:15:00-06:00"},
-  {week:15, date:"Sunday, December 20", time:"7:20 PM CT", opponent:"Detroit Lions", location:"HOME", kickoff:"2026-12-20T19:20:00-06:00"},
-  {week:16, date:"TBD", time:"TBD", opponent:"Washington Commanders", location:"HOME", kickoff:null},
-  {week:17, date:"Sunday, January 3, 2027", time:"12:00 PM CT", opponent:"New York Jets", location:"AWAY", kickoff:"2027-01-03T12:00:00-06:00"},
-  {week:18, date:"TBD", time:"TBD", opponent:"Chicago Bears", location:"HOME", kickoff:null}
+  {phase:"PRE", week:1, date:"Saturday, August 15", time:"12:00 PM CT", opponent:"New York Giants", location:"AWAY", kickoff:"2026-08-15T12:00:00-05:00"},
+  {phase:"PRE", week:2, date:"Saturday, August 22", time:"12:00 PM CT", opponent:"Baltimore Ravens", location:"HOME", kickoff:"2026-08-22T12:00:00-05:00"},
+  {phase:"PRE", week:3, date:"Friday, August 28", time:"8:00 PM CT", opponent:"Denver Broncos", location:"AWAY", kickoff:"2026-08-28T20:00:00-05:00"},
+  {phase:"REG", week:1, date:"Sunday, September 13", time:"3:25 PM CT", opponent:"Green Bay Packers", location:"HOME", kickoff:"2026-09-13T15:25:00-05:00"},
+  {phase:"REG", week:2, date:"Sunday, September 20", time:"12:00 PM CT", opponent:"Chicago Bears", location:"AWAY", kickoff:"2026-09-20T12:00:00-05:00"},
+  {phase:"REG", week:3, date:"Sunday, September 27", time:"3:05 PM CT", opponent:"Tampa Bay Buccaneers", location:"AWAY", kickoff:"2026-09-27T15:05:00-05:00"},
+  {phase:"REG", week:4, date:"Sunday, October 4", time:"3:05 PM CT", opponent:"Miami Dolphins", location:"HOME", kickoff:"2026-10-04T15:05:00-05:00"},
+  {phase:"REG", week:5, date:"Sunday, October 11", time:"12:00 PM CT", opponent:"New Orleans Saints", location:"AWAY", kickoff:"2026-10-11T12:00:00-05:00"},
+  {phase:"REG", week:7, date:"Sunday, October 25", time:"12:00 PM CT", opponent:"Indianapolis Colts", location:"HOME", kickoff:"2026-10-25T12:00:00-05:00"},
+  {phase:"REG", week:8, date:"Sunday, November 1", time:"12:00 PM CT", opponent:"Detroit Lions", location:"AWAY", kickoff:"2026-11-01T12:00:00-06:00"},
+  {phase:"REG", week:9, date:"Monday, November 9", time:"7:15 PM CT", opponent:"Buffalo Bills", location:"HOME", kickoff:"2026-11-09T19:15:00-06:00"},
+  {phase:"REG", week:10, date:"Sunday, November 15", time:"12:00 PM CT", opponent:"Green Bay Packers", location:"AWAY", kickoff:"2026-11-15T12:00:00-06:00"},
+  {phase:"REG", week:11, date:"Sunday, November 22", time:"7:20 PM CT", opponent:"San Francisco 49ers", location:"HOME • MEXICO CITY", kickoff:"2026-11-22T19:20:00-06:00"},
+  {phase:"REG", week:12, date:"Sunday, November 29", time:"12:00 PM CT", opponent:"Atlanta Falcons", location:"HOME", kickoff:"2026-11-29T12:00:00-06:00"},
+  {phase:"REG", week:13, date:"Sunday, December 6", time:"3:25 PM CT", opponent:"Carolina Panthers", location:"HOME", kickoff:"2026-12-06T15:25:00-06:00"},
+  {phase:"REG", week:14, date:"Thursday, December 10", time:"7:15 PM CT", opponent:"New England Patriots", location:"AWAY", kickoff:"2026-12-10T19:15:00-06:00"},
+  {phase:"REG", week:15, date:"Sunday, December 20", time:"7:20 PM CT", opponent:"Detroit Lions", location:"HOME", kickoff:"2026-12-20T19:20:00-06:00"},
+  {phase:"REG", week:16, date:"TBD", time:"TBD", opponent:"Washington Commanders", location:"HOME", kickoff:null},
+  {phase:"REG", week:17, date:"Sunday, January 3, 2027", time:"12:00 PM CT", opponent:"New York Jets", location:"AWAY", kickoff:"2027-01-03T12:00:00-06:00"},
+  {phase:"REG", week:18, date:"TBD", time:"TBD", opponent:"Chicago Bears", location:"HOME", kickoff:null}
 ];
 
-let state = games.map(() => ({
-  numbers: randomNumbers(),
-  picked: Array(6).fill(false),
-  players: [],
-  autoAssigned: false
-}));
+const STORAGE_KEY = "vikings-2026-2027-board-state-v2-preseason";
+
+function defaultState() {
+  return games.map(() => ({
+    numbers: randomNumbers(),
+    picked: Array(6).fill(false),
+    players: [],
+    autoAssigned: false,
+    rolloverIn: 0,
+    halfResult: null,
+    finalResult: null
+  }));
+}
+
+function loadSavedState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return defaultState();
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length !== games.length) return defaultState();
+    return parsed;
+  } catch (e) {
+    return defaultState();
+  }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+let state = loadSavedState();
 let selected = null;
 let activeBoard = 0;
 
@@ -227,7 +285,7 @@ function randomNumbers() {
 function buildNav() {
   const nav = document.getElementById('nav');
   nav.innerHTML = games.map((g,i) =>
-    `<button class="${i===activeBoard?'active':''}" onclick="showBoard(${i})">W${g.week}</button>`
+    `<button class="${i===activeBoard?'active':''}" onclick="showBoard(${i})">${g.phase==="PRE" ? "P" : "W"}${g.week}</button>`
   ).join('');
 }
 
@@ -235,7 +293,7 @@ function buildBoards() {
   const boards = document.getElementById('boards');
   boards.innerHTML = games.map((g,i) => `
     <section class="board ${i===activeBoard?'active':''}" id="board-${i}">
-      <div class="game-number">Game ${i+1} • Week ${g.week}</div>
+      <div class="game-number">${g.phase==="PRE" ? "Preseason" : "Regular Season"} • Week ${g.week}</div>
       <h2 class="game-title">Vikings ${g.location.includes('AWAY') ? '@' : 'vs.'} ${g.opponent}</h2>
       <div class="game-meta">
         <strong>${g.date}</strong> &nbsp;•&nbsp; <strong>${g.time}</strong>
@@ -257,6 +315,28 @@ function buildBoards() {
           <strong>💰 Pot Rollover:</strong> If the winning number is not one of the numbers on that week's board,
           there is no winner and the pot rolls over to the next week.
         </div>
+      </div>
+      <div class="payout-box">
+        <h3>💵 Payout Calculator</h3>
+        <div>Each claimed square = <strong>$5</strong>.</div>
+        <div>Current pot: <strong id="pot-${i}">$0.00</strong></div>
+        <div>Rollover entering this game: <strong id="rollover-in-${i}">$0.00</strong></div>
+
+        <div style="margin-top:12px;"><strong>Halftime score</strong></div>
+        <div class="score-grid">
+          <input id="half-vik-${i}" type="number" min="0" placeholder="Vikings">
+          <input id="half-opp-${i}" type="number" min="0" placeholder="${g.opponent}">
+        </div>
+        <button class="control" onclick="calculatePayout(${i}, 'half')">Calculate Halftime</button>
+        <div class="payout-result" id="half-result-${i}">Enter halftime scores to calculate.</div>
+
+        <div style="margin-top:14px;"><strong>Final score</strong></div>
+        <div class="score-grid">
+          <input id="final-vik-${i}" type="number" min="0" placeholder="Vikings">
+          <input id="final-opp-${i}" type="number" min="0" placeholder="${g.opponent}">
+        </div>
+        <button class="control" onclick="calculatePayout(${i}, 'final')">Calculate Final</button>
+        <div class="payout-result" id="final-result-${i}">Enter final scores to calculate.</div>
       </div>
     </section>
   `).join('');
@@ -290,6 +370,109 @@ function renderBoard(i) {
   result.innerHTML = s.players.length
     ? s.players.map(p => `<div class="result-row"><span>${escapeHtml(p.name)}${p.auto ? ' (auto)' : ''}</span><strong>${p.number}</strong></div>`).join('')
     : '<div class="empty">No picks yet.</div>';
+  renderPayout(i);
+}
+
+
+function paidSquareCount(i) {
+  return state[i].picked.filter(Boolean).length;
+}
+
+function rolloverInto(i) {
+  if (i === 0) return Number(state[i].rolloverIn || 0);
+  const prev = state[i - 1];
+  return prev.finalResult ? Number(prev.finalResult.rolloverOut || 0) : Number(state[i].rolloverIn || 0);
+}
+
+function totalPot(i) {
+  return paidSquareCount(i) * 5 + rolloverInto(i);
+}
+
+function winningNumberFromScores(vikingsScore, opponentScore) {
+  return ((Math.abs(Number(vikingsScore)) % 10) + (Math.abs(Number(opponentScore)) % 10)) % 10;
+}
+
+function matchingPlayers(i, winningNumber) {
+  return state[i].players.filter(p => Number(p.number) === Number(winningNumber));
+}
+
+function calculatePayout(i, period) {
+  const vikInput = document.getElementById(`${period}-vik-${i}`);
+  const oppInput = document.getElementById(`${period}-opp-${i}`);
+  if (!vikInput || !oppInput || vikInput.value === '' || oppInput.value === '') {
+    alert('Enter both team scores first.');
+    return;
+  }
+
+  const vik = Number(vikInput.value);
+  const opp = Number(oppInput.value);
+  const winningNumber = winningNumberFromScores(vik, opp);
+  const matches = matchingPlayers(i, winningNumber);
+  const pot = totalPot(i);
+
+  const result = matches.length
+    ? {
+        vik, opp, winningNumber,
+        winners: matches.map(p => p.name),
+        payoutEach: pot / matches.length,
+        pot,
+        rolloverOut: 0
+      }
+    : {
+        vik, opp, winningNumber,
+        winners: [],
+        payoutEach: 0,
+        pot,
+        rolloverOut: pot
+      };
+
+  if (period === 'half') state[i].halfResult = result;
+  if (period === 'final') {
+    state[i].finalResult = result;
+    if (i + 1 < state.length) state[i + 1].rolloverIn = result.rolloverOut;
+  }
+
+  saveState();
+  renderPayout(i);
+  if (period === 'final' && i + 1 < state.length) renderPayout(i + 1);
+}
+
+function renderPayout(i) {
+  const potEl = document.getElementById(`pot-${i}`);
+  const rollEl = document.getElementById(`rollover-in-${i}`);
+  if (potEl) potEl.textContent = `$${totalPot(i).toFixed(2)}`;
+  if (rollEl) rollEl.textContent = `$${rolloverInto(i).toFixed(2)}`;
+
+  const half = state[i].halfResult;
+  const final = state[i].finalResult;
+
+  if (half) {
+    const halfEl = document.getElementById(`half-result-${i}`);
+    if (halfEl) {
+      const detail = half.winners.length
+        ? `Winner${half.winners.length > 1 ? 's' : ''}: <strong>${half.winners.map(escapeHtml).join(', ')}</strong><br>Payout: <strong>$${half.payoutEach.toFixed(2)}${half.winners.length > 1 ? ' each' : ''}</strong>`
+        : `No matching number on the board.<br><strong>Rollover pot: $${half.rolloverOut.toFixed(2)}</strong>`;
+      halfEl.innerHTML = `Winning number: <strong>${half.winningNumber}</strong><br>${detail}`;
+    }
+    const hv = document.getElementById(`half-vik-${i}`);
+    const ho = document.getElementById(`half-opp-${i}`);
+    if (hv) hv.value = half.vik;
+    if (ho) ho.value = half.opp;
+  }
+
+  if (final) {
+    const finalEl = document.getElementById(`final-result-${i}`);
+    if (finalEl) {
+      const detail = final.winners.length
+        ? `Winner${final.winners.length > 1 ? 's' : ''}: <strong>${final.winners.map(escapeHtml).join(', ')}</strong><br>Payout: <strong>$${final.payoutEach.toFixed(2)}${final.winners.length > 1 ? ' each' : ''}</strong><br>Rollover to next game: <strong>$0.00</strong>`
+        : `No matching number on the board.<br><strong>Rollover to next game: $${final.rolloverOut.toFixed(2)}</strong>`;
+      finalEl.innerHTML = `Winning number: <strong>${final.winningNumber}</strong><br>${detail}`;
+    }
+    const fv = document.getElementById(`final-vik-${i}`);
+    const fo = document.getElementById(`final-opp-${i}`);
+    if (fv) fv.value = final.vik;
+    if (fo) fo.value = final.opp;
+  }
 }
 
 function showBoard(i) {
@@ -310,7 +493,7 @@ function openModal(gameIndex, squareIndex) {
   }
   selected = {gameIndex, squareIndex};
   document.getElementById('modalGame').textContent =
-    `Week ${games[gameIndex].week}: Vikings ${games[gameIndex].location.includes('AWAY')?'@':'vs.'} ${games[gameIndex].opponent}. One square per person this week.`;
+    `${games[gameIndex].phase==="PRE" ? "Preseason" : "Regular Season"} Week ${games[gameIndex].week}: Vikings ${games[gameIndex].location.includes('AWAY')?'@':'vs.'} ${games[gameIndex].opponent}. One square per person this game.`;
   document.getElementById('nameInput').value = '';
   document.getElementById('modal').classList.remove('hidden');
   setTimeout(()=>document.getElementById('nameInput').focus(),50);
@@ -340,12 +523,13 @@ function submitPick() {
   const normalized = name.toLowerCase();
   const alreadyPicked = s.players.some(p => !p.auto && p.name.trim().toLowerCase() === normalized);
   if (alreadyPicked) {
-    alert(`${name} already picked a square for Week ${games[gameIndex].week}. Only one square per person is allowed each week.`);
+    alert(`${name} already picked a square for ${games[gameIndex].phase==="PRE" ? "Preseason " : ""}Week ${games[gameIndex].week}. Only one square per person is allowed each game.`);
     return;
   }
 
   s.picked[squareIndex] = true;
   s.players.push({name, number:s.numbers[squareIndex], auto:false});
+  saveState();
   closeModal();
   renderBoard(gameIndex);
 }
@@ -371,6 +555,7 @@ function autoAssignIfNeeded(gameIndex) {
     }
   });
   s.autoAssigned = true;
+  saveState();
 }
 
 document.getElementById('nameInput').addEventListener('keydown', e => {
@@ -404,8 +589,12 @@ function confirmAdminReset() {
     numbers: randomNumbers(),
     picked: Array(6).fill(false),
     players: [],
-    autoAssigned: false
+    autoAssigned: false,
+    rolloverIn: 0,
+    halfResult: null,
+    finalResult: null
   }));
+  saveState();
   closeAdminReset();
   buildBoards();
 }
@@ -422,8 +611,12 @@ function newAllBoards() {
     numbers: randomNumbers(),
     picked: Array(6).fill(false),
     players: [],
-    autoAssigned: false
+    autoAssigned: false,
+    rolloverIn: 0,
+    halfResult: null,
+    finalResult: null
   }));
+  saveState();
   buildBoards();
 }
 
@@ -434,6 +627,7 @@ function clearAllPicks() {
     s.autoAssigned = false;
     autoAssignIfNeeded(i);
   });
+  saveState();
   games.forEach((_,i)=>renderBoard(i));
 }
 
