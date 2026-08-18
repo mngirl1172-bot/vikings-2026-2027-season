@@ -84,6 +84,18 @@
     padding:0;
   }
   .card:disabled { cursor:default; }
+  .card.locked { cursor:not-allowed; }
+  .card.locked .front { opacity:.55; }
+  .locked-label {
+    position:absolute;
+    top:8px;
+    left:8px;
+    right:8px;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:.05em;
+    text-align:center;
+  }
   .card-inner {
     position:relative; width:100%; height:100%;
     transition:transform .65s cubic-bezier(.2,.75,.2,1);
@@ -472,7 +484,7 @@ function renderBoard(i) {
     ${(() => {
       const w = getWinnerStatus(i, j);
       return `<button class="card ${s.picked[j]?'flipped':''} ${w.className}" ${s.picked[j]?'disabled':''}
-        onclick="openModal(${i},${j})" aria-label="Square ${j+1}">
+        onclick="openModal(${i},${j})" aria-label="Square ${j+1}${s.picked[j] ? ', picked by ' + getSquareOwner(i,j) : ''}">
         <div class="card-inner">
           <div class="face front">?</div>
           <div class="face back">
