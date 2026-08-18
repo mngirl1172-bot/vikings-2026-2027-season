@@ -48,6 +48,23 @@
   .board.active { display:block; }
   .game-number { color:#ad7bc9; font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:13px; }
   .game-title { margin:5px 0 4px; font-size:clamp(23px, 5vw, 34px); }
+  .score-sync-status {
+    margin:6px auto 10px;
+    font-size:13px;
+    opacity:.82;
+    text-align:center;
+  }
+  .score-summary {
+    margin:10px auto 14px;
+    max-width:680px;
+    padding:12px 16px;
+    border-radius:12px;
+    background:#17121d;
+    border:1px solid #4a3655;
+    text-align:center;
+    line-height:1.5;
+  }
+  .score-summary .score-line { font-size:16px; font-weight:700; }
   .game-meta { color:#c9c2ce; margin-bottom:20px; font-size:16px; }
   .game-meta strong { color:#fff; }
 
@@ -87,6 +104,36 @@
     background:#f7f7f9; color:#111;
     transform:rotateY(180deg); font-size:70px; font-weight:900;
     border:2px solid #fff;
+  }
+  .winner-half .back {
+    outline: 4px solid currentColor;
+  }
+  .winner-final .back {
+    box-shadow: inset 0 0 0 5px currentColor, 0 10px 28px rgba(0,0,0,.35);
+  }
+  .winner-both .back {
+    outline: 4px solid currentColor;
+    box-shadow: inset 0 0 0 5px currentColor, 0 10px 28px rgba(0,0,0,.35);
+  }
+  .winner-tag {
+    position:absolute;
+    top:9px;
+    left:9px;
+    right:9px;
+    font-size:12px;
+    font-weight:900;
+    letter-spacing:.04em;
+    text-align:center;
+  }
+  .owner-label {
+    position:absolute;
+    bottom:10px;
+    left:8px;
+    right:8px;
+    font-size:14px;
+    font-weight:800;
+    color:#4a246d;
+    text-align:center;
   }
   .status { text-align:center; color:#c8c1ce; min-height:23px; }
   .results {
@@ -128,6 +175,16 @@
     background:#0d0c10;
     color:#fff;
   }
+  .winner-display {
+    margin-top:14px;
+    padding:14px 16px;
+    border-radius:12px;
+    background:#141018;
+    border:1px solid #5b4565;
+    text-align:left;
+  }
+  .winner-display h3 { margin:0 0 8px; }
+  .winner-display .big-winner { font-size:18px; font-weight:800; }
   .payout-result {
     margin-top:10px;
     padding:10px;
@@ -197,7 +254,7 @@
   <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset Board</button>
 </div>
 <p class="footer-note">
-  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
+  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players are Crissy, Cheryl, Cole, Kellen, Lynda, and Lynea. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
 </p>
 
 <div class="modal hidden" id="adminModal">
@@ -215,7 +272,7 @@
     <button class="close" onclick="closeModal()">×</button>
     <h2>Enter Your Name</h2>
     <p id="modalGame"></p>
-    <input id="nameInput" type="text" maxlength="40" placeholder="Your name" autocomplete="name">
+    <input id="nameInput" type="text" maxlength="40" placeholder="Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea" autocomplete="name">
     <button class="control submit" onclick="submitPick()">Reveal My Number</button>
   </div>
 </div>
@@ -244,7 +301,9 @@ const games = [
   {phase:"REG", week:18, date:"TBD", time:"TBD", opponent:"Chicago Bears", location:"HOME", kickoff:null}
 ];
 
-const STORAGE_KEY = "vikings-2026-2027-board-state-v2-preseason";
+const ALLOWED_PLAYERS = ["Crissy", "Cheryl", "Cole", "Kellen", "Lynda", "Lynea"];
+
+const STORAGE_KEY = "vikings-2026-2027-board-state-v5-winner-display";
 
 function defaultState() {
   return games.map(() => ({
@@ -279,7 +338,15 @@ let selected = null;
 let activeBoard = 0;
 
 function randomNumbers() {
-  return Array.from({length:6}, () => Math.floor(Math.random() * 10));
+  const digits = [0,1,2,3,4,5,6,7,8,9];
+
+  // Fisher-Yates shuffle, then use the first 6 unique digits.
+  for (let i = digits.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [digits[i], digits[j]] = [digits[j], digits[i]];
+  }
+
+  return digits.slice(0, 6);
 }
 
 function buildNav() {
@@ -299,6 +366,10 @@ function buildBoards() {
         <strong>${g.date}</strong> &nbsp;•&nbsp; <strong>${g.time}</strong>
         &nbsp;•&nbsp; ${g.location}
       </div>
+      <div class="score-summary" id="score-summary-${i}">
+        <strong>Scores:</strong> Not entered yet
+      </div>
+      <div class="score-sync-status" id="score-sync-${i}">Live score sync: waiting for game data</div>
       <div class="squares" id="squares-${i}"></div>
       <div class="status" id="status-${i}"></div>
       <div class="results">
@@ -318,7 +389,7 @@ function buildBoards() {
       </div>
       <div class="payout-box">
         <h3>💵 Payout Calculator</h3>
-        <div>Each claimed square = <strong>$5</strong>.</div>
+        <div>Each claimed square = <strong>$5</strong>. Each board uses 6 unique digits from 0–9.</div>
         <div>Current pot: <strong id="pot-${i}">$0.00</strong></div>
         <div>Rollover entering this game: <strong id="rollover-in-${i}">$0.00</strong></div>
 
@@ -338,6 +409,16 @@ function buildBoards() {
         <button class="control" onclick="calculatePayout(${i}, 'final')">Calculate Final</button>
         <div class="payout-result" id="final-result-${i}">Enter final scores to calculate.</div>
       </div>
+
+      <div class="winner-display">
+        <h3>🏆 Halftime Winner</h3>
+        <div id="half-winner-${i}">No halftime winner calculated yet. Winning square will be highlighted and labeled HALF.</div>
+      </div>
+
+      <div class="winner-display">
+        <h3>🏆 Final Winner</h3>
+        <div id="final-winner-${i}">No final winner calculated yet. Winning square will be highlighted and labeled FINAL.</div>
+      </div>
     </section>
   `).join('');
 
@@ -347,32 +428,153 @@ function buildBoards() {
   });
 }
 
+
+
+function getWinnerStatus(gameIndex, squareIndex) {
+  const owner = state[gameIndex].players.find(x => Number(x.squareIndex) === Number(squareIndex));
+  if (!owner) return {className:'', label:''};
+
+  const half = state[gameIndex].halfResult;
+  const final = state[gameIndex].finalResult;
+
+  const halfWin = half && Number(owner.number) === Number(half.winningNumber);
+  const finalWin = final && Number(owner.number) === Number(final.winningNumber);
+
+  if (halfWin && finalWin) return {className:'winner-both', label:'HALF + FINAL'};
+  if (halfWin) return {className:'winner-half', label:'HALF'};
+  if (finalWin) return {className:'winner-final', label:'FINAL'};
+  return {className:'', label:''};
+}
+
+function getSquareOwner(gameIndex, squareIndex) {
+  const p = state[gameIndex].players.find(x => Number(x.squareIndex) === Number(squareIndex));
+  return p ? escapeHtml(p.name) : '';
+}
+
+function normalizePlayerName(name) {
+  const found = ALLOWED_PLAYERS.find(p => p.toLowerCase() === name.trim().toLowerCase());
+  return found || null;
+}
+
+function shuffleArray(items) {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function renderBoard(i) {
   const squares = document.getElementById(`squares-${i}`);
   const s = state[i];
   squares.innerHTML = s.numbers.map((num,j) => `
-    <button class="card ${s.picked[j]?'flipped':''}" ${s.picked[j]?'disabled':''}
-      onclick="openModal(${i},${j})" aria-label="Square ${j+1}">
-      <div class="card-inner">
-        <div class="face front">?</div>
-        <div class="face back">${num}</div>
-      </div>
-    </button>
+    ${(() => {
+      const w = getWinnerStatus(i, j);
+      return `<button class="card ${s.picked[j]?'flipped':''} ${w.className}" ${s.picked[j]?'disabled':''}
+        onclick="openModal(${i},${j})" aria-label="Square ${j+1}">
+        <div class="card-inner">
+          <div class="face front">?</div>
+          <div class="face back">
+            ${w.label ? `<div class="winner-tag">${w.label}</div>` : ''}
+            ${num}
+            <div class="owner-label">${getSquareOwner(i, j)}</div>
+          </div>
+        </div>
+      </button>`;
+    })()}
   `).join('');
 
   const remaining = s.picked.filter(x=>!x).length;
   document.getElementById(`status-${i}`).textContent =
     s.autoAssigned
-      ? 'Kickoff has passed — remaining squares were auto-assigned.'
-      : (remaining ? `${remaining} square${remaining===1?'':'s'} available • One pick per person this week` : 'All 6 squares have been picked!');
+      ? 'Kickoff has passed — any players who had not picked were auto-assigned to the remaining squares.'
+      : (remaining ? `${remaining} square${remaining===1?'':'s'} available • One square per listed player` : 'All 6 squares have been picked!');
 
   const result = document.getElementById(`results-${i}`);
   result.innerHTML = s.players.length
-    ? s.players.map(p => `<div class="result-row"><span>${escapeHtml(p.name)}${p.auto ? ' (auto)' : ''}</span><strong>${p.number}</strong></div>`).join('')
+    ? s.players.map(p => `<div class="result-row"><span>${escapeHtml(p.name)}${p.auto ? ' (auto-assigned)' : ''}</span><strong>${p.number}</strong></div>`).join('')
     : '<div class="empty">No picks yet.</div>';
   renderPayout(i);
 }
 
+
+
+const SCORE_FUNCTION_URL = "https://hlgnmfrzdhyvpwrkwiha.supabase.co/functions/v1/vikings-score";
+
+function gameDateForScoreFeed(game) {
+  if (!game.kickoff) return null;
+  const d = new Date(game.kickoff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+async function syncGameScore(i) {
+  const game = games[i];
+  const date = gameDateForScoreFeed(game);
+  const statusEl = document.getElementById(`score-sync-${i}`);
+  if (!date) {
+    if (statusEl) statusEl.textContent = 'Live score sync: kickoff date/time is TBD';
+    return;
+  }
+
+  try {
+    const url = `${SCORE_FUNCTION_URL}?date=${encodeURIComponent(date)}&opponent=${encodeURIComponent(game.opponent)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`score service ${response.status}`);
+    const data = await response.json();
+
+    if (!data.found) {
+      if (statusEl) statusEl.textContent = 'Live score sync: game data not available yet';
+      return;
+    }
+
+    let changed = false;
+
+    if (data.vikings?.halftime != null && data.opponent?.halftime != null && !state[i].halfResult) {
+      const hv = document.getElementById(`half-vik-${i}`);
+      const ho = document.getElementById(`half-opp-${i}`);
+      if (hv) hv.value = data.vikings.halftime;
+      if (ho) ho.value = data.opponent.halftime;
+      calculatePayout(i, 'half');
+      changed = true;
+    }
+
+    if (data.final?.vikings != null && data.final?.opponent != null && !state[i].finalResult) {
+      const fv = document.getElementById(`final-vik-${i}`);
+      const fo = document.getElementById(`final-opp-${i}`);
+      if (fv) fv.value = data.final.vikings;
+      if (fo) fo.value = data.final.opponent;
+      calculatePayout(i, 'final');
+      changed = true;
+    }
+
+    if (statusEl) {
+      const detail = data.status?.description || data.status?.detail || 'game found';
+      statusEl.textContent = `Live score sync: ${detail} • checked ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+    }
+
+    if (changed) renderBoard(i);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = 'Live score sync temporarily unavailable — manual score entry still works';
+    console.warn('Score sync failed', err);
+  }
+}
+
+function syncRelevantScores() {
+  games.forEach((g, i) => {
+    if (!g.kickoff) return;
+    const kickoff = new Date(g.kickoff).getTime();
+    const now = Date.now();
+    // Poll from 30 minutes before kickoff through 6 hours after kickoff,
+    // or until both halftime and final results have been saved.
+    if (now >= kickoff - 30 * 60 * 1000 && now <= kickoff + 6 * 60 * 60 * 1000) {
+      if (!state[i].halfResult || !state[i].finalResult) syncGameScore(i);
+    }
+  });
+}
 
 function paidSquareCount(i) {
   return state[i].picked.filter(Boolean).length;
@@ -433,11 +635,29 @@ function calculatePayout(i, period) {
   }
 
   saveState();
-  renderPayout(i);
+  renderBoard(i);
   if (period === 'final' && i + 1 < state.length) renderPayout(i + 1);
 }
 
 function renderPayout(i) {
+  const scoreSummary = document.getElementById(`score-summary-${i}`);
+  const savedHalf = state[i].halfResult;
+  const savedFinal = state[i].finalResult;
+
+  if (scoreSummary) {
+    if (savedFinal) {
+      scoreSummary.innerHTML =
+        `<div class="score-line">HALFTIME: ${savedHalf ? `Vikings ${savedHalf.vik} — ${games[i].opponent} ${savedHalf.opp}` : 'Not entered'}</div>
+         <div class="score-line">FINAL: Vikings ${savedFinal.vik} — ${games[i].opponent} ${savedFinal.opp}</div>`;
+    } else if (savedHalf) {
+      scoreSummary.innerHTML =
+        `<div class="score-line">HALFTIME: Vikings ${savedHalf.vik} — ${games[i].opponent} ${savedHalf.opp}</div>
+         <div class="score-line">FINAL: Game not finished</div>`;
+    } else {
+      scoreSummary.innerHTML = `<strong>Scores:</strong> Not entered yet`;
+    }
+  }
+
   const potEl = document.getElementById(`pot-${i}`);
   const rollEl = document.getElementById(`rollover-in-${i}`);
   if (potEl) potEl.textContent = `$${totalPot(i).toFixed(2)}`;
@@ -448,11 +668,20 @@ function renderPayout(i) {
 
   if (half) {
     const halfEl = document.getElementById(`half-result-${i}`);
+    const halfWinnerEl = document.getElementById(`half-winner-${i}`);
     if (halfEl) {
       const detail = half.winners.length
         ? `Winner${half.winners.length > 1 ? 's' : ''}: <strong>${half.winners.map(escapeHtml).join(', ')}</strong><br>Payout: <strong>$${half.payoutEach.toFixed(2)}${half.winners.length > 1 ? ' each' : ''}</strong>`
         : `No matching number on the board.<br><strong>Rollover pot: $${half.rolloverOut.toFixed(2)}</strong>`;
       halfEl.innerHTML = `Winning number: <strong>${half.winningNumber}</strong><br>${detail}`;
+    }
+    if (halfWinnerEl) {
+      halfWinnerEl.innerHTML = half.winners.length
+        ? `<div class="big-winner">${half.winners.map(escapeHtml).join(', ')}</div>
+           Winning number: <strong>${half.winningNumber}</strong><br>
+           Payout: <strong>$${half.payoutEach.toFixed(2)}${half.winners.length > 1 ? ' each' : ''}</strong>`
+        : `No halftime winner for number <strong>${half.winningNumber}</strong>.<br>
+           Rollover pot: <strong>$${half.rolloverOut.toFixed(2)}</strong>`;
     }
     const hv = document.getElementById(`half-vik-${i}`);
     const ho = document.getElementById(`half-opp-${i}`);
@@ -462,11 +691,20 @@ function renderPayout(i) {
 
   if (final) {
     const finalEl = document.getElementById(`final-result-${i}`);
+    const finalWinnerEl = document.getElementById(`final-winner-${i}`);
     if (finalEl) {
       const detail = final.winners.length
         ? `Winner${final.winners.length > 1 ? 's' : ''}: <strong>${final.winners.map(escapeHtml).join(', ')}</strong><br>Payout: <strong>$${final.payoutEach.toFixed(2)}${final.winners.length > 1 ? ' each' : ''}</strong><br>Rollover to next game: <strong>$0.00</strong>`
         : `No matching number on the board.<br><strong>Rollover to next game: $${final.rolloverOut.toFixed(2)}</strong>`;
       finalEl.innerHTML = `Winning number: <strong>${final.winningNumber}</strong><br>${detail}`;
+    }
+    if (finalWinnerEl) {
+      finalWinnerEl.innerHTML = final.winners.length
+        ? `<div class="big-winner">${final.winners.map(escapeHtml).join(', ')}</div>
+           Winning number: <strong>${final.winningNumber}</strong><br>
+           Final payout: <strong>$${final.payoutEach.toFixed(2)}${final.winners.length > 1 ? ' each' : ''}</strong>`
+        : `No final winner for number <strong>${final.winningNumber}</strong>.<br>
+           Rollover to next game: <strong>$${final.rolloverOut.toFixed(2)}</strong>`;
     }
     const fv = document.getElementById(`final-vik-${i}`);
     const fo = document.getElementById(`final-opp-${i}`);
@@ -477,6 +715,7 @@ function renderPayout(i) {
 
 function showBoard(i) {
   activeBoard = i;
+  syncGameScore(i);
   autoAssignIfNeeded(i);
   document.querySelectorAll('.board').forEach((b,n)=>b.classList.toggle('active',n===i));
   buildNav();
@@ -505,8 +744,13 @@ function closeModal() {
 }
 
 function submitPick() {
-  const name = document.getElementById('nameInput').value.trim();
-  if (!name || !selected) return;
+  const enteredName = document.getElementById('nameInput').value.trim();
+  const name = normalizePlayerName(enteredName);
+  if (!enteredName || !selected) return;
+  if (!name) {
+    alert('Please enter one of these player names: Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea.');
+    return;
+  }
 
   const {gameIndex, squareIndex} = selected;
   autoAssignIfNeeded(gameIndex);
@@ -520,15 +764,14 @@ function submitPick() {
   const s = state[gameIndex];
   if (s.picked[squareIndex]) return;
 
-  const normalized = name.toLowerCase();
-  const alreadyPicked = s.players.some(p => !p.auto && p.name.trim().toLowerCase() === normalized);
+  const alreadyPicked = s.players.some(p => p.name.toLowerCase() === name.toLowerCase());
   if (alreadyPicked) {
-    alert(`${name} already picked a square for ${games[gameIndex].phase==="PRE" ? "Preseason " : ""}Week ${games[gameIndex].week}. Only one square per person is allowed each game.`);
+    alert(`${name} already has a square for ${games[gameIndex].phase==="PRE" ? "Preseason " : ""}Week ${games[gameIndex].week}.`);
     return;
   }
 
   s.picked[squareIndex] = true;
-  s.players.push({name, number:s.numbers[squareIndex], auto:false});
+  s.players.push({name, number:s.numbers[squareIndex], squareIndex, auto:false});
   saveState();
   closeModal();
   renderBoard(gameIndex);
@@ -544,16 +787,26 @@ function autoAssignIfNeeded(gameIndex) {
   const s = state[gameIndex];
   if (!g.kickoff || s.autoAssigned || !hasKickedOff(gameIndex)) return;
 
-  s.picked.forEach((isPicked, idx) => {
-    if (!isPicked) {
-      s.picked[idx] = true;
-      s.players.push({
-        name: `Auto Assigned — Square ${idx + 1}`,
-        number: s.numbers[idx],
-        auto: true
-      });
-    }
+  const assignedNames = new Set(s.players.map(p => p.name.toLowerCase()));
+  const missingPlayers = ALLOWED_PLAYERS.filter(p => !assignedNames.has(p.toLowerCase()));
+  const openSquares = s.picked
+    .map((picked, idx) => picked ? null : idx)
+    .filter(idx => idx !== null);
+
+  const shuffledSquares = shuffleArray(openSquares);
+
+  missingPlayers.forEach((name, idx) => {
+    const squareIndex = shuffledSquares[idx];
+    if (squareIndex === undefined) return;
+    s.picked[squareIndex] = true;
+    s.players.push({
+      name,
+      number: s.numbers[squareIndex],
+      squareIndex,
+      auto: true
+    });
   });
+
   s.autoAssigned = true;
   saveState();
 }
@@ -647,6 +900,8 @@ setInterval(() => {
 
 buildNav();
 buildBoards();
+setTimeout(syncRelevantScores, 1200);
+setInterval(syncRelevantScores, 60000);
 </script>
 </body>
 </html>
