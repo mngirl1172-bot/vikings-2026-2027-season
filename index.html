@@ -25,6 +25,24 @@
   }
   h1 { margin: 0 0 7px; font-size: clamp(30px, 6vw, 48px); }
   .subtitle { color: #c7bfce; margin: 0; }
+  .identity-bar {
+    margin:12px auto 0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    font-size:14px;
+  }
+  .identity-bar strong { font-size:15px; }
+  .identity-bar button {
+    border:1px solid #4a3655;
+    background:#17121d;
+    color:#fff;
+    border-radius:8px;
+    padding:7px 10px;
+    cursor:pointer;
+  }
   .nav {
     display:flex; justify-content:center; gap:8px; flex-wrap:wrap;
     margin-top:18px;
@@ -273,6 +291,10 @@
 <header>
   <h1>🏈 Minnesota Vikings Pick a Square!</h1>
   <p class="subtitle">Pick one square per game, including preseason. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
+  <div class="identity-bar">
+    <span>You are: <strong id="currentPlayerName">Not registered</strong></span>
+    <button onclick="openPlayerRegistration()">Change player</button>
+  </div>
   <div class="nav" id="nav"></div>
 </header>
 
@@ -282,8 +304,16 @@
   <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset This Page</button>
 </div>
 <p class="footer-note">
-  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players are Crissy, Cheryl, Cole, Kellen, Lynda, and Lynea. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
+  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
 </p>
+
+<div class="modal hidden" id="playerModal">
+  <div class="dialog">
+    <h2>Who are you?</h2>
+    <p>Choose your name. This device will remember your selection.</p>
+    <div id="playerButtons"></div>
+  </div>
+</div>
 
 <div class="modal hidden" id="adminModal">
   <div class="dialog">
@@ -295,7 +325,7 @@
   </div>
 </div>
 
-<div class="modal hidden" id="modal">
+<div class="modal hidden" id="modal" style="display:none;">
   <div class="dialog">
     <button class="close" onclick="closeModal()">×</button>
     <h2>Enter Your Name</h2>
@@ -330,6 +360,41 @@ const games = [
 ];
 
 const ALLOWED_PLAYERS = ["Crissy", "Cheryl", "Cole", "Kellen", "Lynda", "Lynea"];
+const PLAYER_ID_KEY = "vikings-player-name";
+let currentPlayer = localStorage.getItem(PLAYER_ID_KEY) || null;
+
+function renderPlayerIdentity() {
+  const el = document.getElementById('currentPlayerName');
+  if (el) el.textContent = currentPlayer || 'Not registered';
+}
+
+function openPlayerRegistration() {
+  const modal = document.getElementById('playerModal');
+  const buttons = document.getElementById('playerButtons');
+  buttons.innerHTML = ALLOWED_PLAYERS.map(name =>
+    `<button class="control" style="width:100%;margin:5px 0;" onclick="selectRegisteredPlayer('${name}')">${name}</button>`
+  ).join('');
+  modal.classList.remove('hidden');
+}
+
+function selectRegisteredPlayer(name) {
+  if (!ALLOWED_PLAYERS.includes(name)) return;
+  currentPlayer = name;
+  localStorage.setItem(PLAYER_ID_KEY, name);
+  document.getElementById('playerModal').classList.add('hidden');
+  renderPlayerIdentity();
+}
+
+function ensureRegisteredPlayer() {
+  if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
+    currentPlayer = null;
+    openPlayerRegistration();
+    return false;
+  }
+  return true;
+}
+
+
 
 const SUPABASE_URL = "https://hlgnmfrzdhyvpwrkwiha.supabase.co";
 const SUPABASE_KEY = "sb_publishable_2i9Lyx7QsYmZ_dzhTl7jAA_Wu3IBBnh";
@@ -811,19 +876,32 @@ function showBoard(i) {
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
-function openModal(gameIndex, squareIndex) {
+async function openModal(gameIndex, squareIndex) {
   autoAssignIfNeeded(gameIndex);
   if (state[gameIndex].picked[squareIndex]) return;
   if (hasKickedOff(gameIndex)) {
     renderBoard(gameIndex);
     return;
   }
-  selected = {gameIndex, squareIndex};
-  document.getElementById('modalGame').textContent =
-    `${games[gameIndex].phase==="PRE" ? "Preseason" : "Regular Season"} Week ${games[gameIndex].week}: Vikings ${games[gameIndex].location.includes('AWAY')?'@':'vs.'} ${games[gameIndex].opponent}. One square per person this game.`;
-  document.getElementById('nameInput').value = '';
-  document.getElementById('modal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('nameInput').focus(),50);
+  if (!ensureRegisteredPlayer()) return;
+
+  const s = state[gameIndex];
+  const alreadyPicked = s.players.some(p => p.name.toLowerCase() === currentPlayer.toLowerCase());
+  if (alreadyPicked) {
+    alert(`${currentPlayer} already has a square for ${games[gameIndex].phase==="PRE" ? "Preseason " : ""}Week ${games[gameIndex].week}.`);
+    return;
+  }
+
+  try {
+    await saveSharedPick(gameIndex, squareIndex, currentPlayer, s.numbers[squareIndex], false);
+    s.picked[squareIndex] = true;
+    s.players.push({name: currentPlayer, number:s.numbers[squareIndex], squareIndex, auto:false});
+    saveState();
+    renderBoard(gameIndex);
+  } catch (err) {
+    alert('That square or player was just claimed by someone else. The board will refresh now.');
+    await loadSharedPicks();
+  }
 }
 
 function closeModal() {
@@ -832,43 +910,8 @@ function closeModal() {
 }
 
 async function submitPick() {
-  const enteredName = document.getElementById('nameInput').value.trim();
-  const name = normalizePlayerName(enteredName);
-  if (!enteredName || !selected) return;
-  if (!name) {
-    alert('Please enter one of these player names: Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea.');
-    return;
-  }
-
-  const {gameIndex, squareIndex} = selected;
-  autoAssignIfNeeded(gameIndex);
-
-  if (hasKickedOff(gameIndex)) {
-    closeModal();
-    renderBoard(gameIndex);
-    return;
-  }
-
-  const s = state[gameIndex];
-  if (s.picked[squareIndex]) return;
-
-  const alreadyPicked = s.players.some(p => p.name.toLowerCase() === name.toLowerCase());
-  if (alreadyPicked) {
-    alert(`${name} already has a square for ${games[gameIndex].phase==="PRE" ? "Preseason " : ""}Week ${games[gameIndex].week}.`);
-    return;
-  }
-
-  try {
-    await saveSharedPick(gameIndex, squareIndex, name, s.numbers[squareIndex], false);
-    s.picked[squareIndex] = true;
-    s.players.push({name, number:s.numbers[squareIndex], squareIndex, auto:false});
-    saveState();
-    closeModal();
-    renderBoard(gameIndex);
-  } catch (err) {
-    alert('That square or player was just claimed by someone else. The board will refresh now.');
-    await loadSharedPicks();
-  }
+  // Registration-based picking no longer uses the name-entry modal.
+  return;
 }
 
 function hasKickedOff(gameIndex) {
@@ -1000,6 +1043,10 @@ setInterval(() => {
 
 buildNav();
 buildBoards();
+renderPlayerIdentity();
+if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
+  setTimeout(openPlayerRegistration, 300);
+}
 loadSharedPicks().then(() => {
   subscribeSharedPicks();
   syncRelevantScores();
