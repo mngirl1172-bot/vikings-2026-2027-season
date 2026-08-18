@@ -137,6 +137,21 @@
     letter-spacing:.04em;
     text-align:center;
   }
+  .chosen-label {
+    position:absolute;
+    top:8px;
+    left:8px;
+    right:8px;
+    font-size:12px;
+    font-weight:900;
+    letter-spacing:.06em;
+    text-align:center;
+  }
+  .picked-number {
+    font-size:46px;
+    font-weight:900;
+    line-height:1;
+  }
   .owner-label {
     position:absolute;
     bottom:10px;
@@ -488,8 +503,10 @@ function renderBoard(i) {
         <div class="card-inner">
           <div class="face front">?</div>
           <div class="face back">
-            ${w.label ? `<div class="winner-tag">${w.label}</div>` : ''}
-            ${num}
+            ${w.label
+              ? `<div class="winner-tag">${w.label}</div>`
+              : `<div class="chosen-label">CHOSEN</div>`}
+            <div class="picked-number">${num}</div>
             <div class="owner-label">${getSquareOwner(i, j)}</div>
           </div>
         </div>
