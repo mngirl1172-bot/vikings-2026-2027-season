@@ -278,7 +278,7 @@
 <main id="boards"></main>
 
 <div class="bottom-controls">
-  <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset Board</button>
+  <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset This Page</button>
 </div>
 <p class="footer-note">
   One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players are Crissy, Cheryl, Cole, Kellen, Lynda, and Lynea. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
@@ -288,9 +288,9 @@
   <div class="dialog">
     <button class="close" onclick="closeAdminReset()">×</button>
     <h2>Admin Reset</h2>
-    <p>Enter the admin PIN to reset all boards, names, picks, and numbers.</p>
+    <p>Enter the admin PIN to reset only the game page currently being viewed.</p>
     <input id="adminPinInput" type="password" inputmode="numeric" maxlength="12" placeholder="Admin PIN">
-    <button class="control submit" onclick="confirmAdminReset()">Reset All Boards</button>
+    <button class="control submit" onclick="confirmAdminReset()">Reset This Page</button>
   </div>
 </div>
 
@@ -866,19 +866,27 @@ function confirmAdminReset() {
     alert('Incorrect admin PIN.');
     return;
   }
-  if (!confirm('Reset ALL weeks, names, picks, and random numbers?')) return;
-  state = games.map(() => ({
+
+  const game = games[activeBoard];
+  const label = `${game.phase === "PRE" ? "Preseason" : "Regular Season"} Week ${game.week}`;
+
+  if (!confirm(`Reset only ${label}? This will clear this page's picks, names, scores, winners, payout results, and generate 6 new unique numbers. Other game pages will not be changed.`)) {
+    return;
+  }
+
+  state[activeBoard] = {
     numbers: randomNumbers(),
     picked: Array(6).fill(false),
     players: [],
     autoAssigned: false,
-    rolloverIn: 0,
+    rolloverIn: state[activeBoard].rolloverIn || 0,
     halfResult: null,
     finalResult: null
-  }));
+  };
+
   saveState();
   closeAdminReset();
-  buildBoards();
+  renderBoard(activeBoard);
 }
 
 document.getElementById('adminPinInput').addEventListener('keydown', e => {
