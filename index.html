@@ -94,6 +94,18 @@
     padding:13px 15px; margin-top:15px;
   }
   .results h3 { margin:0 0 8px; font-size:16px; }
+  .winner-note {
+    margin:16px 0 0;
+    padding:14px 16px;
+    border-radius:12px;
+    background:#19131f;
+    border:1px solid #4a3655;
+    color:#ddd3e3;
+    line-height:1.45;
+    text-align:left;
+  }
+  .winner-note strong { color:#fff; }
+  .winner-example { color:#b991d0; font-size:14px; margin-top:6px; }
   .result-row {
     display:flex; justify-content:space-between; gap:12px;
     padding:8px 0; border-bottom:1px solid #28232c;
@@ -145,19 +157,28 @@
 
 <header>
   <h1>🏈 Minnesota Vikings Pick a Square!</h1>
-  <p class="subtitle">Pick a square for each 2026 Vikings regular-season game.</p>
+  <p class="subtitle">Pick one square per week. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
   <div class="nav" id="nav"></div>
 </header>
 
 <main id="boards"></main>
 
 <div class="bottom-controls">
-  <button class="control secondary" onclick="newAllBoards()">🎲 New Numbers for All Games</button>
-  <button class="control secondary" onclick="clearAllPicks()">Clear All Names</button>
+  <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset Board</button>
 </div>
 <p class="footer-note">
-  Schedule information is based on the current Vikings schedule. Games marked TBD have not yet been assigned a date/time.
+  One square per person each week. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added.
 </p>
+
+<div class="modal hidden" id="adminModal">
+  <div class="dialog">
+    <button class="close" onclick="closeAdminReset()">×</button>
+    <h2>Admin Reset</h2>
+    <p>Enter the admin PIN to reset all boards, names, picks, and numbers.</p>
+    <input id="adminPinInput" type="password" inputmode="numeric" maxlength="12" placeholder="Admin PIN">
+    <button class="control submit" onclick="confirmAdminReset()">Reset All Boards</button>
+  </div>
+</div>
 
 <div class="modal hidden" id="modal">
   <div class="dialog">
@@ -171,29 +192,30 @@
 
 <script>
 const games = [
-  {week:1, date:"Sunday, September 13", time:"3:25 PM CT", opponent:"Green Bay Packers", location:"HOME"},
-  {week:2, date:"Sunday, September 20", time:"12:00 PM CT", opponent:"Chicago Bears", location:"AWAY"},
-  {week:3, date:"Sunday, September 27", time:"3:05 PM CT", opponent:"Tampa Bay Buccaneers", location:"AWAY"},
-  {week:4, date:"Sunday, October 4", time:"3:05 PM CT", opponent:"Miami Dolphins", location:"HOME"},
-  {week:5, date:"Sunday, October 11", time:"12:00 PM CT", opponent:"New Orleans Saints", location:"AWAY"},
-  {week:7, date:"Sunday, October 25", time:"12:00 PM CT", opponent:"Indianapolis Colts", location:"HOME"},
-  {week:8, date:"Sunday, November 1", time:"12:00 PM CT", opponent:"Detroit Lions", location:"AWAY"},
-  {week:9, date:"Monday, November 9", time:"7:15 PM CT", opponent:"Buffalo Bills", location:"HOME"},
-  {week:10, date:"Sunday, November 15", time:"12:00 PM CT", opponent:"Green Bay Packers", location:"AWAY"},
-  {week:11, date:"Sunday, November 22", time:"7:20 PM CT", opponent:"San Francisco 49ers", location:"HOME • MEXICO CITY"},
-  {week:12, date:"Sunday, November 29", time:"12:00 PM CT", opponent:"Atlanta Falcons", location:"HOME"},
-  {week:13, date:"Sunday, December 6", time:"3:25 PM CT", opponent:"Carolina Panthers", location:"HOME"},
-  {week:14, date:"Thursday, December 10", time:"7:15 PM CT", opponent:"New England Patriots", location:"AWAY"},
-  {week:15, date:"Sunday, December 20", time:"7:20 PM CT", opponent:"Detroit Lions", location:"HOME"},
-  {week:16, date:"TBD", time:"TBD", opponent:"Washington Commanders", location:"HOME"},
-  {week:17, date:"Sunday, January 3, 2027", time:"12:00 PM CT", opponent:"New York Jets", location:"AWAY"},
-  {week:18, date:"TBD", time:"TBD", opponent:"Chicago Bears", location:"HOME"}
+  {week:1, date:"Sunday, September 13", time:"3:25 PM CT", opponent:"Green Bay Packers", location:"HOME", kickoff:"2026-09-13T15:25:00-05:00"},
+  {week:2, date:"Sunday, September 20", time:"12:00 PM CT", opponent:"Chicago Bears", location:"AWAY", kickoff:"2026-09-20T12:00:00-05:00"},
+  {week:3, date:"Sunday, September 27", time:"3:05 PM CT", opponent:"Tampa Bay Buccaneers", location:"AWAY", kickoff:"2026-09-27T15:05:00-05:00"},
+  {week:4, date:"Sunday, October 4", time:"3:05 PM CT", opponent:"Miami Dolphins", location:"HOME", kickoff:"2026-10-04T15:05:00-05:00"},
+  {week:5, date:"Sunday, October 11", time:"12:00 PM CT", opponent:"New Orleans Saints", location:"AWAY", kickoff:"2026-10-11T12:00:00-05:00"},
+  {week:7, date:"Sunday, October 25", time:"12:00 PM CT", opponent:"Indianapolis Colts", location:"HOME", kickoff:"2026-10-25T12:00:00-05:00"},
+  {week:8, date:"Sunday, November 1", time:"12:00 PM CT", opponent:"Detroit Lions", location:"AWAY", kickoff:"2026-11-01T12:00:00-06:00"},
+  {week:9, date:"Monday, November 9", time:"7:15 PM CT", opponent:"Buffalo Bills", location:"HOME", kickoff:"2026-11-09T19:15:00-06:00"},
+  {week:10, date:"Sunday, November 15", time:"12:00 PM CT", opponent:"Green Bay Packers", location:"AWAY", kickoff:"2026-11-15T12:00:00-06:00"},
+  {week:11, date:"Sunday, November 22", time:"7:20 PM CT", opponent:"San Francisco 49ers", location:"HOME • MEXICO CITY", kickoff:"2026-11-22T19:20:00-06:00"},
+  {week:12, date:"Sunday, November 29", time:"12:00 PM CT", opponent:"Atlanta Falcons", location:"HOME", kickoff:"2026-11-29T12:00:00-06:00"},
+  {week:13, date:"Sunday, December 6", time:"3:25 PM CT", opponent:"Carolina Panthers", location:"HOME", kickoff:"2026-12-06T15:25:00-06:00"},
+  {week:14, date:"Thursday, December 10", time:"7:15 PM CT", opponent:"New England Patriots", location:"AWAY", kickoff:"2026-12-10T19:15:00-06:00"},
+  {week:15, date:"Sunday, December 20", time:"7:20 PM CT", opponent:"Detroit Lions", location:"HOME", kickoff:"2026-12-20T19:20:00-06:00"},
+  {week:16, date:"TBD", time:"TBD", opponent:"Washington Commanders", location:"HOME", kickoff:null},
+  {week:17, date:"Sunday, January 3, 2027", time:"12:00 PM CT", opponent:"New York Jets", location:"AWAY", kickoff:"2027-01-03T12:00:00-06:00"},
+  {week:18, date:"TBD", time:"TBD", opponent:"Chicago Bears", location:"HOME", kickoff:null}
 ];
 
 let state = games.map(() => ({
   numbers: randomNumbers(),
   picked: Array(6).fill(false),
-  players: []
+  players: [],
+  autoAssigned: false
 }));
 let selected = null;
 let activeBoard = 0;
@@ -225,10 +247,24 @@ function buildBoards() {
         <h3>Players & Numbers</h3>
         <div id="results-${i}"></div>
       </div>
+
+      <div class="winner-note">
+        <strong>🏆 Winner Rule — Halftime & Final Score</strong><br>
+        Take the last digit of the Vikings score and the last digit of the opponent's score,
+        add those two digits together, then use the last digit of that total as the winning number.
+        <div class="winner-example">
+          Example: Vikings 17, Opponent 13 → 7 + 3 = 10 → winning number is <strong>0</strong>.<br>
+          <strong>💰 Pot Rollover:</strong> If the winning number is not one of the numbers on that week's board,
+          there is no winner and the pot rolls over to the next week.
+        </div>
+      </div>
     </section>
   `).join('');
 
-  games.forEach((_,i) => renderBoard(i));
+  games.forEach((_,i) => {
+    autoAssignIfNeeded(i);
+    renderBoard(i);
+  });
 }
 
 function renderBoard(i) {
@@ -246,26 +282,35 @@ function renderBoard(i) {
 
   const remaining = s.picked.filter(x=>!x).length;
   document.getElementById(`status-${i}`).textContent =
-    remaining ? `${remaining} square${remaining===1?'':'s'} available` : 'All 6 squares have been picked!';
+    s.autoAssigned
+      ? 'Kickoff has passed — remaining squares were auto-assigned.'
+      : (remaining ? `${remaining} square${remaining===1?'':'s'} available • One pick per person this week` : 'All 6 squares have been picked!');
 
   const result = document.getElementById(`results-${i}`);
   result.innerHTML = s.players.length
-    ? s.players.map(p => `<div class="result-row"><span>${escapeHtml(p.name)}</span><strong>${p.number}</strong></div>`).join('')
+    ? s.players.map(p => `<div class="result-row"><span>${escapeHtml(p.name)}${p.auto ? ' (auto)' : ''}</span><strong>${p.number}</strong></div>`).join('')
     : '<div class="empty">No picks yet.</div>';
 }
 
 function showBoard(i) {
   activeBoard = i;
+  autoAssignIfNeeded(i);
   document.querySelectorAll('.board').forEach((b,n)=>b.classList.toggle('active',n===i));
   buildNav();
+  renderBoard(i);
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function openModal(gameIndex, squareIndex) {
+  autoAssignIfNeeded(gameIndex);
   if (state[gameIndex].picked[squareIndex]) return;
+  if (hasKickedOff(gameIndex)) {
+    renderBoard(gameIndex);
+    return;
+  }
   selected = {gameIndex, squareIndex};
   document.getElementById('modalGame').textContent =
-    `Week ${games[gameIndex].week}: Vikings ${games[gameIndex].location.includes('AWAY')?'@':'vs.'} ${games[gameIndex].opponent}`;
+    `Week ${games[gameIndex].week}: Vikings ${games[gameIndex].location.includes('AWAY')?'@':'vs.'} ${games[gameIndex].opponent}. One square per person this week.`;
   document.getElementById('nameInput').value = '';
   document.getElementById('modal').classList.remove('hidden');
   setTimeout(()=>document.getElementById('nameInput').focus(),50);
@@ -279,19 +324,53 @@ function closeModal() {
 function submitPick() {
   const name = document.getElementById('nameInput').value.trim();
   if (!name || !selected) return;
+
   const {gameIndex, squareIndex} = selected;
+  autoAssignIfNeeded(gameIndex);
+
+  if (hasKickedOff(gameIndex)) {
+    closeModal();
+    renderBoard(gameIndex);
+    return;
+  }
+
   const s = state[gameIndex];
   if (s.picked[squareIndex]) return;
 
+  const normalized = name.toLowerCase();
+  const alreadyPicked = s.players.some(p => !p.auto && p.name.trim().toLowerCase() === normalized);
+  if (alreadyPicked) {
+    alert(`${name} already picked a square for Week ${games[gameIndex].week}. Only one square per person is allowed each week.`);
+    return;
+  }
+
   s.picked[squareIndex] = true;
-  s.players.push({name, number:s.numbers[squareIndex]});
+  s.players.push({name, number:s.numbers[squareIndex], auto:false});
   closeModal();
   renderBoard(gameIndex);
+}
 
-  // Automatically advance to the next game after a pick.
-  if (gameIndex < games.length-1) {
-    showBoard(gameIndex+1);
-  }
+function hasKickedOff(gameIndex) {
+  const kickoff = games[gameIndex].kickoff;
+  return kickoff ? Date.now() >= new Date(kickoff).getTime() : false;
+}
+
+function autoAssignIfNeeded(gameIndex) {
+  const g = games[gameIndex];
+  const s = state[gameIndex];
+  if (!g.kickoff || s.autoAssigned || !hasKickedOff(gameIndex)) return;
+
+  s.picked.forEach((isPicked, idx) => {
+    if (!isPicked) {
+      s.picked[idx] = true;
+      s.players.push({
+        name: `Auto Assigned — Square ${idx + 1}`,
+        number: s.numbers[idx],
+        auto: true
+      });
+    }
+  });
+  s.autoAssigned = true;
 }
 
 document.getElementById('nameInput').addEventListener('keydown', e => {
@@ -301,19 +380,59 @@ document.getElementById('modal').addEventListener('click', e => {
   if (e.target.id === 'modal') closeModal();
 });
 
+
+const ADMIN_PIN = "1172";
+
+function openAdminReset() {
+  document.getElementById('adminPinInput').value = '';
+  document.getElementById('adminModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('adminPinInput').focus(), 50);
+}
+
+function closeAdminReset() {
+  document.getElementById('adminModal').classList.add('hidden');
+}
+
+function confirmAdminReset() {
+  const pin = document.getElementById('adminPinInput').value;
+  if (pin !== ADMIN_PIN) {
+    alert('Incorrect admin PIN.');
+    return;
+  }
+  if (!confirm('Reset ALL weeks, names, picks, and random numbers?')) return;
+  state = games.map(() => ({
+    numbers: randomNumbers(),
+    picked: Array(6).fill(false),
+    players: [],
+    autoAssigned: false
+  }));
+  closeAdminReset();
+  buildBoards();
+}
+
+document.getElementById('adminPinInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmAdminReset();
+});
+document.getElementById('adminModal').addEventListener('click', e => {
+  if (e.target.id === 'adminModal') closeAdminReset();
+});
+
 function newAllBoards() {
   state = games.map(() => ({
     numbers: randomNumbers(),
     picked: Array(6).fill(false),
-    players: []
+    players: [],
+    autoAssigned: false
   }));
   buildBoards();
 }
 
 function clearAllPicks() {
-  state.forEach(s => {
+  state.forEach((s,i) => {
     s.picked = Array(6).fill(false);
     s.players = [];
+    s.autoAssigned = false;
+    autoAssignIfNeeded(i);
   });
   games.forEach((_,i)=>renderBoard(i));
 }
@@ -323,6 +442,14 @@ function escapeHtml(s) {
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;'
   }[c]));
 }
+
+setInterval(() => {
+  games.forEach((_,i) => {
+    const before = state[i].autoAssigned;
+    autoAssignIfNeeded(i);
+    if (!before && state[i].autoAssigned) renderBoard(i);
+  });
+}, 30000);
 
 buildNav();
 buildBoards();
