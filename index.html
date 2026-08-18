@@ -266,6 +266,7 @@
     .nav { max-height:92px; overflow:auto; justify-content:flex-start; }
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -330,6 +331,61 @@ const games = [
 
 const ALLOWED_PLAYERS = ["Crissy", "Cheryl", "Cole", "Kellen", "Lynda", "Lynea"];
 
+const SUPABASE_URL = "https://hlgnmfrzdhyvpwrkwiha.supabase.co";
+const SUPABASE_KEY = "sb_publishable_2i9Lyx7QsYmZ_dzhTl7jAA_Wu3IBBnh";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function loadSharedPicks() {
+  const { data, error } = await sb.from('board_picks').select('*').order('created_at');
+  if (error) {
+    console.warn('Could not load shared picks', error);
+    return;
+  }
+
+  // Database is authoritative for picks/names. Preserve each page's numbers/results.
+  state.forEach(s => {
+    s.picked = Array(6).fill(false);
+    s.players = [];
+  });
+
+  for (const row of data || []) {
+    const s = state[row.game_index];
+    if (!s) continue;
+    // Keep the number saved with the shared pick so every viewer sees the same picked number.
+    s.numbers[row.square_index] = Number(row.number);
+    s.picked[row.square_index] = true;
+    s.players.push({
+      name: row.player_name,
+      number: Number(row.number),
+      squareIndex: Number(row.square_index),
+      auto: Boolean(row.auto_assigned)
+    });
+  }
+
+  saveState();
+  games.forEach((_, i) => renderBoard(i));
+}
+
+async function saveSharedPick(gameIndex, squareIndex, name, number, autoAssigned=false) {
+  const { error } = await sb.from('board_picks').insert({
+    game_index: gameIndex,
+    square_index: squareIndex,
+    player_name: name,
+    number: Number(number),
+    auto_assigned: Boolean(autoAssigned)
+  });
+  if (error) throw error;
+}
+
+function subscribeSharedPicks() {
+  sb.channel('vikings-board-picks')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'board_picks' }, async () => {
+      await loadSharedPicks();
+    })
+    .subscribe();
+}
+
+
 const STORAGE_KEY = "vikings-2026-2027-board-state-v5-winner-display";
 
 function defaultState() {
@@ -362,7 +418,11 @@ function saveState() {
 
 let state = loadSavedState();
 let selected = null;
-let activeBoard = 0;
+const ACTIVE_BOARD_KEY = "vikings-active-board";
+let activeBoard = Number(localStorage.getItem(ACTIVE_BOARD_KEY) || 0);
+if (!Number.isInteger(activeBoard) || activeBoard < 0 || activeBoard >= games.length) {
+  activeBoard = 0;
+}
 
 function randomNumbers() {
   const digits = [0,1,2,3,4,5,6,7,8,9];
@@ -503,9 +563,7 @@ function renderBoard(i) {
         <div class="card-inner">
           <div class="face front">?</div>
           <div class="face back">
-            ${w.label
-              ? `<div class="winner-tag">${w.label}</div>`
-              : `<div class="chosen-label">CHOSEN</div>`}
+            ${w.label ? `<div class="winner-tag">${w.label}</div>` : ''}
             <div class="picked-number">${num}</div>
             <div class="owner-label">${getSquareOwner(i, j)}</div>
           </div>
@@ -744,6 +802,7 @@ function renderPayout(i) {
 
 function showBoard(i) {
   activeBoard = i;
+  localStorage.setItem(ACTIVE_BOARD_KEY, String(i));
   syncGameScore(i);
   autoAssignIfNeeded(i);
   document.querySelectorAll('.board').forEach((b,n)=>b.classList.toggle('active',n===i));
@@ -772,7 +831,7 @@ function closeModal() {
   selected = null;
 }
 
-function submitPick() {
+async function submitPick() {
   const enteredName = document.getElementById('nameInput').value.trim();
   const name = normalizePlayerName(enteredName);
   if (!enteredName || !selected) return;
@@ -799,11 +858,17 @@ function submitPick() {
     return;
   }
 
-  s.picked[squareIndex] = true;
-  s.players.push({name, number:s.numbers[squareIndex], squareIndex, auto:false});
-  saveState();
-  closeModal();
-  renderBoard(gameIndex);
+  try {
+    await saveSharedPick(gameIndex, squareIndex, name, s.numbers[squareIndex], false);
+    s.picked[squareIndex] = true;
+    s.players.push({name, number:s.numbers[squareIndex], squareIndex, auto:false});
+    saveState();
+    closeModal();
+    renderBoard(gameIndex);
+  } catch (err) {
+    alert('That square or player was just claimed by someone else. The board will refresh now.');
+    await loadSharedPicks();
+  }
 }
 
 function hasKickedOff(gameIndex) {
@@ -811,33 +876,31 @@ function hasKickedOff(gameIndex) {
   return kickoff ? Date.now() >= new Date(kickoff).getTime() : false;
 }
 
-function autoAssignIfNeeded(gameIndex) {
+async function autoAssignIfNeeded(gameIndex) {
   const g = games[gameIndex];
   const s = state[gameIndex];
   if (!g.kickoff || s.autoAssigned || !hasKickedOff(gameIndex)) return;
 
+  await loadSharedPicks();
+
   const assignedNames = new Set(s.players.map(p => p.name.toLowerCase()));
   const missingPlayers = ALLOWED_PLAYERS.filter(p => !assignedNames.has(p.toLowerCase()));
-  const openSquares = s.picked
-    .map((picked, idx) => picked ? null : idx)
-    .filter(idx => idx !== null);
-
+  const openSquares = s.picked.map((picked, idx) => picked ? null : idx).filter(idx => idx !== null);
   const shuffledSquares = shuffleArray(openSquares);
 
-  missingPlayers.forEach((name, idx) => {
+  for (let idx = 0; idx < missingPlayers.length; idx++) {
+    const name = missingPlayers[idx];
     const squareIndex = shuffledSquares[idx];
-    if (squareIndex === undefined) return;
-    s.picked[squareIndex] = true;
-    s.players.push({
-      name,
-      number: s.numbers[squareIndex],
-      squareIndex,
-      auto: true
-    });
-  });
+    if (squareIndex === undefined) continue;
+    try {
+      await saveSharedPick(gameIndex, squareIndex, name, s.numbers[squareIndex], true);
+    } catch (_) {
+      // Another viewer may have assigned it first; reload below.
+    }
+  }
 
   s.autoAssigned = true;
-  saveState();
+  await loadSharedPicks();
 }
 
 document.getElementById('nameInput').addEventListener('keydown', e => {
@@ -937,6 +1000,11 @@ setInterval(() => {
 
 buildNav();
 buildBoards();
+loadSharedPicks().then(() => {
+  subscribeSharedPicks();
+  syncRelevantScores();
+});
+setInterval(syncRelevantScores, 60000);
 setTimeout(syncRelevantScores, 1200);
 setInterval(syncRelevantScores, 60000);
 </script>
