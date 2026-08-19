@@ -64,6 +64,16 @@
     box-shadow:0 18px 55px rgba(0,0,0,.35);
   }
   .board.active { display:block; }
+  .week-locked {
+    text-align:center;
+    padding:26px 18px;
+    border-radius:14px;
+    background:#15111a;
+    border:1px solid #513d5a;
+    margin:12px 0 18px;
+  }
+  .week-locked strong { font-size:20px; }
+  .week-locked p { color:#c9c2ce; margin:8px 0 0; }
   .game-number { color:#ad7bc9; font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:13px; }
   .game-title { margin:5px 0 4px; font-size:clamp(23px, 5vw, 34px); }
   .score-sync-status {
@@ -304,7 +314,7 @@
   <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset This Page</button>
 </div>
 <p class="footer-note">
-  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
+  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; halftime rollover carries only into the next game's halftime pot, and final rollover carries only into the next game's final pot. Each next game board stays locked until the prior game has a final score.
 </p>
 
 <div class="modal hidden" id="playerModal">
@@ -459,7 +469,8 @@ function defaultState() {
     picked: Array(6).fill(false),
     players: [],
     autoAssigned: false,
-    rolloverIn: 0,
+    halfRolloverIn: 0,
+    finalRolloverIn: 0,
     halfResult: null,
     finalResult: null
   }));
@@ -522,6 +533,7 @@ function buildBoards() {
         <strong>Scores:</strong> Not entered yet
       </div>
       <div class="score-sync-status" id="score-sync-${i}">Live score sync: waiting for game data</div>
+      <div id="lock-${i}"></div>
       <div class="squares" id="squares-${i}"></div>
       <div class="status" id="status-${i}"></div>
       <div class="results">
@@ -542,8 +554,11 @@ function buildBoards() {
       <div class="payout-box">
         <h3>💵 Payout Calculator</h3>
         <div>Each claimed square = <strong>$5</strong>. Each board uses 6 unique digits from 0–9.</div>
-        <div>Current pot: <strong id="pot-${i}">$0.00</strong></div>
-        <div>Rollover entering this game: <strong id="rollover-in-${i}">$0.00</strong></div>
+        <div>Base game pot: <strong id="base-pot-${i}">$0.00</strong></div>
+        <div>Halftime rollover entering this game: <strong id="half-rollover-in-${i}">$0.00</strong></div>
+        <div>Final rollover entering this game: <strong id="final-rollover-in-${i}">$0.00</strong></div>
+        <div>Halftime pot: <strong id="half-pot-${i}">$0.00</strong></div>
+        <div>Final pot: <strong id="final-pot-${i}">$0.00</strong></div>
 
         <div style="margin-top:12px;"><strong>Halftime score</strong></div>
         <div class="score-grid">
@@ -617,13 +632,33 @@ function shuffleArray(items) {
   return arr;
 }
 
+
+function isBoardUnlocked(i) {
+  if (i === 0) return true;
+  const prev = state[i - 1];
+  return !!(prev && prev.finalResult);
+}
+
+function lockedBoardMessage(i) {
+  if (i === 0) return '';
+  const prevGame = games[i - 1];
+  return `${prevGame.phase === "PRE" ? "Preseason" : "Regular Season"} Week ${prevGame.week} must be final before this board opens.`;
+}
+
 function renderBoard(i) {
   const squares = document.getElementById(`squares-${i}`);
   const s = state[i];
+  const lockEl = document.getElementById(`lock-${i}`);
+  const unlocked = isBoardUnlocked(i);
+
+  if (lockEl) {
+    lockEl.innerHTML = unlocked ? '' :
+      `<div class="week-locked"><strong>🔒 Board Locked</strong><p>${lockedBoardMessage(i)}</p></div>`;
+  }
   squares.innerHTML = s.numbers.map((num,j) => `
     ${(() => {
       const w = getWinnerStatus(i, j);
-      return `<button class="card ${s.picked[j]?'flipped':''} ${w.className}" ${s.picked[j]?'disabled':''}
+      return `<button class="card ${s.picked[j]?'flipped':''} ${w.className}" ${(s.picked[j] || !unlocked)?'disabled':''}
         onclick="openModal(${i},${j})" aria-label="Square ${j+1}${s.picked[j] ? ', picked by ' + getSquareOwner(i,j) : ''}">
         <div class="card-inner">
           <div class="face front">?</div>
@@ -732,14 +767,26 @@ function paidSquareCount(i) {
   return state[i].picked.filter(Boolean).length;
 }
 
-function rolloverInto(i) {
-  if (i === 0) return Number(state[i].rolloverIn || 0);
-  const prev = state[i - 1];
-  return prev.finalResult ? Number(prev.finalResult.rolloverOut || 0) : Number(state[i].rolloverIn || 0);
+function basePot(i) {
+  return paidSquareCount(i) * 5;
 }
 
-function totalPot(i) {
-  return paidSquareCount(i) * 5 + rolloverInto(i);
+function halfRolloverInto(i) {
+  if (i === 0) return Number(state[i].halfRolloverIn || 0);
+  const prev = state[i - 1];
+  if (prev && prev.halfResult) return Number(prev.halfResult.rolloverOut || 0);
+  return Number(state[i].halfRolloverIn || 0);
+}
+
+function finalRolloverInto(i) {
+  if (i === 0) return Number(state[i].finalRolloverIn || 0);
+  const prev = state[i - 1];
+  if (prev && prev.finalResult) return Number(prev.finalResult.rolloverOut || 0);
+  return Number(state[i].finalRolloverIn || 0);
+}
+
+function periodPot(i, period) {
+  return basePot(i) + (period === 'half' ? halfRolloverInto(i) : finalRolloverInto(i));
 }
 
 function winningNumberFromScores(vikingsScore, opponentScore) {
@@ -762,7 +809,7 @@ function calculatePayout(i, period) {
   const opp = Number(oppInput.value);
   const winningNumber = winningNumberFromScores(vik, opp);
   const matches = matchingPlayers(i, winningNumber);
-  const pot = totalPot(i);
+  const pot = periodPot(i, period);
 
   const result = matches.length
     ? {
@@ -780,15 +827,20 @@ function calculatePayout(i, period) {
         rolloverOut: pot
       };
 
-  if (period === 'half') state[i].halfResult = result;
+  if (period === 'half') {
+    state[i].halfResult = result;
+    if (i + 1 < state.length) state[i + 1].halfRolloverIn = result.rolloverOut;
+  }
   if (period === 'final') {
     state[i].finalResult = result;
-    if (i + 1 < state.length) state[i + 1].rolloverIn = result.rolloverOut;
+    if (i + 1 < state.length) state[i + 1].finalRolloverIn = result.rolloverOut;
   }
 
   saveState();
   renderBoard(i);
-  if (period === 'final' && i + 1 < state.length) renderPayout(i + 1);
+  if (period === 'final' && i + 1 < state.length) {
+    renderBoard(i + 1);
+  }
 }
 
 function renderPayout(i) {
@@ -810,10 +862,16 @@ function renderPayout(i) {
     }
   }
 
-  const potEl = document.getElementById(`pot-${i}`);
-  const rollEl = document.getElementById(`rollover-in-${i}`);
-  if (potEl) potEl.textContent = `$${totalPot(i).toFixed(2)}`;
-  if (rollEl) rollEl.textContent = `$${rolloverInto(i).toFixed(2)}`;
+  const baseEl = document.getElementById(`base-pot-${i}`);
+  const halfRollEl = document.getElementById(`half-rollover-in-${i}`);
+  const finalRollEl = document.getElementById(`final-rollover-in-${i}`);
+  const halfPotEl = document.getElementById(`half-pot-${i}`);
+  const finalPotEl = document.getElementById(`final-pot-${i}`);
+  if (baseEl) baseEl.textContent = `$${basePot(i).toFixed(2)}`;
+  if (halfRollEl) halfRollEl.textContent = `$${halfRolloverInto(i).toFixed(2)}`;
+  if (finalRollEl) finalRollEl.textContent = `$${finalRolloverInto(i).toFixed(2)}`;
+  if (halfPotEl) halfPotEl.textContent = `$${periodPot(i, 'half').toFixed(2)}`;
+  if (finalPotEl) finalPotEl.textContent = `$${periodPot(i, 'final').toFixed(2)}`;
 
   const half = state[i].halfResult;
   const final = state[i].finalResult;
@@ -877,6 +935,10 @@ function showBoard(i) {
 }
 
 async function openModal(gameIndex, squareIndex) {
+  if (!isBoardUnlocked(gameIndex)) {
+    alert(lockedBoardMessage(gameIndex));
+    return;
+  }
   autoAssignIfNeeded(gameIndex);
   if (state[gameIndex].picked[squareIndex]) return;
   if (hasKickedOff(gameIndex)) {
@@ -985,7 +1047,8 @@ function confirmAdminReset() {
     picked: Array(6).fill(false),
     players: [],
     autoAssigned: false,
-    rolloverIn: state[activeBoard].rolloverIn || 0,
+    halfRolloverIn: state[activeBoard].halfRolloverIn || 0,
+    finalRolloverIn: state[activeBoard].finalRolloverIn || 0,
     halfResult: null,
     finalResult: null
   };
@@ -1008,7 +1071,8 @@ function newAllBoards() {
     picked: Array(6).fill(false),
     players: [],
     autoAssigned: false,
-    rolloverIn: 0,
+    halfRolloverIn: 0,
+    finalRolloverIn: 0,
     halfResult: null,
     finalResult: null
   }));
