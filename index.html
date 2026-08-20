@@ -170,8 +170,27 @@ function currentIndex() {
 }
 
 function basePot(i) { return 30; }
-function halfRollIn(i) { return i>0 && results[i-1].half ? Number(results[i-1].half.rolloverOut||0) : 0; }
-function finalRollIn(i) { return i>0 && results[i-1].final ? Number(results[i-1].final.rolloverOut||0) : 0; }
+function halfRollIn(i) {
+  if (i <= 0) return 0;
+  const prevGame = games[i - 1];
+  const thisGame = games[i];
+
+  // Never carry preseason money into the regular season.
+  if (prevGame.phase === "PRE" && thisGame.phase === "REG") return 0;
+
+  return results[i - 1].half ? Number(results[i - 1].half.rolloverOut || 0) : 0;
+}
+
+function finalRollIn(i) {
+  if (i <= 0) return 0;
+  const prevGame = games[i - 1];
+  const thisGame = games[i];
+
+  // Never carry preseason money into the regular season.
+  if (prevGame.phase === "PRE" && thisGame.phase === "REG") return 0;
+
+  return results[i - 1].final ? Number(results[i - 1].final.rolloverOut || 0) : 0;
+}
 function periodPot(i,period) { return basePot(i)+(period==="half"?halfRollIn(i):finalRollIn(i)); }
 
 function winnerStatus(i,square) {
@@ -189,7 +208,7 @@ function renderNav() {
   const nav=document.getElementById("nav");
   nav.innerHTML=games.map((g,i)=>{
     const label=(g.phase==="PRE"?"P":"W")+g.week;
-    return `<button class="${i===active?"active":""}" ${unlocked(i)?"":"disabled"} onclick="showBoard(${i})">${label}</button>`;
+    return `<button class="${i===active?"active":""}" onclick="showBoard(${i})">${label}</button>`;
   }).join("");
 }
 
@@ -223,7 +242,7 @@ function render() {
     ? picks[active].map(p=>`<div class="result-row"><span>${escapeHtml(p.player_name)}${p.auto_assigned?" (auto-assigned)":""}</span><strong>${p.number}</strong></div>`).join("")
     : `<div class="small">No picks yet.</div>`;
 
-  const lockHtml=canUse?"":`<div class="lock-note"><strong>🔒 Board Locked</strong><br>This board opens only after the previous game is final.</div>`;
+  const lockHtml=canUse?"":`<div class="lock-note"><strong>🔒 Board Locked</strong><br>Future board — view only. Picking opens after the previous game is final.</div>`;
 
   const halfWinner = half
     ? (half.winners?.length ? `${half.winners.map(escapeHtml).join(", ")} — $${Number(half.payoutEach).toFixed(2)}` : `No winner — $${Number(half.rolloverOut).toFixed(2)} rolls to next halftime pot`)
@@ -251,6 +270,7 @@ function render() {
       <div class="payout-box">
         <strong>💵 Payouts</strong><br>
         All 6 squares are paid at $5 each, whether manually chosen or auto-assigned.<br>
+        ${g.phase==="PRE" ? "<span class='small'>Preseason is for fun: rollover can carry between preseason games, but any remaining preseason carryover resets to $0 before Regular Season Week 1.</span><br>" : ""}
         Base pot: <strong>$${basePot(active).toFixed(2)}</strong><br>
         Halftime rollover in: <strong>$${halfRollIn(active).toFixed(2)}</strong> • Halftime pot: <strong>$${periodPot(active,"half").toFixed(2)}</strong><br>
         Final rollover in: <strong>$${finalRollIn(active).toFixed(2)}</strong> • Final pot: <strong>$${periodPot(active,"final").toFixed(2)}</strong><br><br>
@@ -261,7 +281,6 @@ function render() {
 }
 
 function showBoard(i) {
-  if (!unlocked(i)) return;
   active=i;
   renderNav();
   render();
