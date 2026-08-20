@@ -314,7 +314,7 @@
   <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset This Page</button>
 </div>
 <p class="footer-note">
-  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; halftime rollover carries only into the next game's halftime pot, and final rollover carries only into the next game's final pot. Each next game board stays locked until the prior game has a final score.
+  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; halftime rollover carries only into the next game's halftime pot, and final rollover carries only into the next game's final pot. Each next game board stays locked until the day after the prior game is completed. The site automatically opens to the current available game when visited.
 </p>
 
 <div class="modal hidden" id="playerModal">
@@ -495,10 +495,7 @@ function saveState() {
 let state = loadSavedState();
 let selected = null;
 const ACTIVE_BOARD_KEY = "vikings-active-board";
-let activeBoard = Number(localStorage.getItem(ACTIVE_BOARD_KEY) || 0);
-if (!Number.isInteger(activeBoard) || activeBoard < 0 || activeBoard >= games.length) {
-  activeBoard = 0;
-}
+let activeBoard = 0;
 
 function randomNumbers() {
   const digits = [0,1,2,3,4,5,6,7,8,9];
@@ -635,14 +632,33 @@ function shuffleArray(items) {
 
 function isBoardUnlocked(i) {
   if (i === 0) return true;
-  const prev = state[i - 1];
-  return !!(prev && prev.finalResult);
+
+  const prevGame = games[i - 1];
+  const prevState = state[i - 1];
+
+  if (!prevState || !prevState.finalResult) return false;
+
+  let completedAt = null;
+
+  if (prevState.finalResult.completedAt) {
+    completedAt = new Date(prevState.finalResult.completedAt);
+  } else if (prevGame.kickoff) {
+    completedAt = new Date(prevGame.kickoff);
+  }
+
+  if (!completedAt || Number.isNaN(completedAt.getTime())) return false;
+
+  const unlockAt = new Date(completedAt);
+  unlockAt.setHours(0, 0, 0, 0);
+  unlockAt.setDate(unlockAt.getDate() + 1);
+
+  return Date.now() >= unlockAt.getTime();
 }
 
 function lockedBoardMessage(i) {
   if (i === 0) return '';
   const prevGame = games[i - 1];
-  return `${prevGame.phase === "PRE" ? "Preseason" : "Regular Season"} Week ${prevGame.week} must be final before this board opens.`;
+  return `${prevGame.phase === "PRE" ? "Preseason" : "Regular Season"} Week ${prevGame.week} must be completed, and this board will open the following day.`;
 }
 
 function renderBoard(i) {
@@ -832,6 +848,7 @@ function calculatePayout(i, period) {
     if (i + 1 < state.length) state[i + 1].halfRolloverIn = result.rolloverOut;
   }
   if (period === 'final') {
+    result.completedAt = result.completedAt || new Date().toISOString();
     state[i].finalResult = result;
     if (i + 1 < state.length) state[i + 1].finalRolloverIn = result.rolloverOut;
   }
@@ -921,6 +938,30 @@ function renderPayout(i) {
     if (fv) fv.value = final.vik;
     if (fo) fo.value = final.opp;
   }
+}
+
+
+function getCurrentWeekIndex() {
+  const now = Date.now();
+  let latestUnlocked = 0;
+
+  for (let i = 0; i < games.length; i++) {
+    if (!isBoardUnlocked(i)) continue;
+    latestUnlocked = i;
+
+    const kickoff = games[i].kickoff ? new Date(games[i].kickoff).getTime() : null;
+    if (kickoff && now <= kickoff + 24 * 60 * 60 * 1000) {
+      return i;
+    }
+  }
+
+  return latestUnlocked;
+}
+
+function openCurrentWeek() {
+  const i = getCurrentWeekIndex();
+  activeBoard = i;
+  localStorage.setItem(ACTIVE_BOARD_KEY, String(i));
 }
 
 function showBoard(i) {
@@ -1105,6 +1146,7 @@ setInterval(() => {
   });
 }, 30000);
 
+openCurrentWeek();
 buildNav();
 buildBoards();
 renderPlayerIdentity();
