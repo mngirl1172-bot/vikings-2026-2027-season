@@ -461,6 +461,72 @@ function subscribeSharedPicks() {
 }
 
 
+async function loadSharedGameResults() {
+  const { data, error } = await sb.from('board_game_results').select('*').order('game_index');
+  if (error) {
+    console.warn('Could not load shared game results', error);
+    return;
+  }
+
+  for (const row of data || []) {
+    const s = state[row.game_index];
+    if (!s) continue;
+
+    if (row.half_result) s.halfResult = row.half_result;
+    if (row.final_result) {
+      s.finalResult = row.final_result;
+      if (row.completed_at && !s.finalResult.completedAt) {
+        s.finalResult.completedAt = row.completed_at;
+      }
+    }
+  }
+
+  // Rebuild the two independent rollover tracks from the shared results.
+  for (let i = 0; i < state.length; i++) {
+    state[i].halfRolloverIn = i > 0 && state[i - 1].halfResult
+      ? Number(state[i - 1].halfResult.rolloverOut || 0)
+      : 0;
+    state[i].finalRolloverIn = i > 0 && state[i - 1].finalResult
+      ? Number(state[i - 1].finalResult.rolloverOut || 0)
+      : 0;
+  }
+
+  saveState();
+}
+
+async function saveSharedGameResult(gameIndex, period, result) {
+  const payload = {
+    game_index: gameIndex,
+    updated_at: new Date().toISOString()
+  };
+
+  if (period === 'half') {
+    payload.half_result = result;
+  } else {
+    payload.final_result = result;
+    payload.completed_at = result.completedAt || new Date().toISOString();
+  }
+
+  const { error } = await sb
+    .from('board_game_results')
+    .upsert(payload, { onConflict: 'game_index' });
+
+  if (error) throw error;
+}
+
+function subscribeSharedGameResults() {
+  sb.channel('vikings-board-results')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'board_game_results' }, async () => {
+      await loadSharedGameResults();
+      openCurrentWeek();
+      buildNav();
+      document.querySelectorAll('.board').forEach((b,n) => b.classList.toggle('active', n === activeBoard));
+      games.forEach((_, i) => renderBoard(i));
+    })
+    .subscribe();
+}
+
+
 const STORAGE_KEY = "vikings-2026-2027-board-state-v5-winner-display";
 
 function defaultState() {
@@ -813,7 +879,7 @@ function matchingPlayers(i, winningNumber) {
   return state[i].players.filter(p => Number(p.number) === Number(winningNumber));
 }
 
-function calculatePayout(i, period) {
+async function calculatePayout(i, period) {
   const vikInput = document.getElementById(`${period}-vik-${i}`);
   const oppInput = document.getElementById(`${period}-opp-${i}`);
   if (!vikInput || !oppInput || vikInput.value === '' || oppInput.value === '') {
@@ -854,9 +920,20 @@ function calculatePayout(i, period) {
   }
 
   saveState();
+
+  try {
+    await saveSharedGameResult(i, period, result);
+  } catch (err) {
+    console.warn('Could not save shared game result', err);
+  }
+
   renderBoard(i);
-  if (period === 'final' && i + 1 < state.length) {
-    renderBoard(i + 1);
+  if (period === 'final') {
+    await loadSharedGameResults();
+    openCurrentWeek();
+    buildNav();
+    document.querySelectorAll('.board').forEach((b,n) => b.classList.toggle('active', n === activeBoard));
+    if (i + 1 < state.length) renderBoard(i + 1);
   }
 }
 
@@ -942,17 +1019,10 @@ function renderPayout(i) {
 
 
 function getCurrentWeekIndex() {
-  const now = Date.now();
   let latestUnlocked = 0;
 
   for (let i = 0; i < games.length; i++) {
-    if (!isBoardUnlocked(i)) continue;
-    latestUnlocked = i;
-
-    const kickoff = games[i].kickoff ? new Date(games[i].kickoff).getTime() : null;
-    if (kickoff && now <= kickoff + 24 * 60 * 60 * 1000) {
-      return i;
-    }
+    if (isBoardUnlocked(i)) latestUnlocked = i;
   }
 
   return latestUnlocked;
@@ -962,6 +1032,11 @@ function openCurrentWeek() {
   const i = getCurrentWeekIndex();
   activeBoard = i;
   localStorage.setItem(ACTIVE_BOARD_KEY, String(i));
+
+  const boards = document.querySelectorAll('.board');
+  if (boards.length) {
+    boards.forEach((b,n) => b.classList.toggle('active', n === i));
+  }
 }
 
 function showBoard(i) {
@@ -1023,6 +1098,7 @@ function hasKickedOff(gameIndex) {
 }
 
 async function autoAssignIfNeeded(gameIndex) {
+  if (!isBoardUnlocked(gameIndex)) return;
   const g = games[gameIndex];
   const s = state[gameIndex];
   if (!g.kickoff || s.autoAssigned || !hasKickedOff(gameIndex)) return;
@@ -1146,18 +1222,26 @@ setInterval(() => {
   });
 }, 30000);
 
-openCurrentWeek();
-buildNav();
-buildBoards();
 renderPlayerIdentity();
 if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
   setTimeout(openPlayerRegistration, 300);
 }
-loadSharedPicks().then(() => {
+
+(async function initializeSharedBoard() {
+  await Promise.all([
+    loadSharedPicks(),
+    loadSharedGameResults()
+  ]);
+
+  openCurrentWeek();
+  buildNav();
+  buildBoards();
+
   subscribeSharedPicks();
+  subscribeSharedGameResults();
   syncRelevantScores();
-});
-setInterval(syncRelevantScores, 60000);
+})();
+
 setTimeout(syncRelevantScores, 1200);
 setInterval(syncRelevantScores, 60000);
 </script>
