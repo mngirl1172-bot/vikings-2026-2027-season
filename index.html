@@ -300,7 +300,8 @@
 
 <header>
   <h1>🏈 Minnesota Vikings Pick a Square!</h1>
-  <p class="subtitle">Pick one square per game, including preseason. The link opens to the current unlocked game. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
+  <div id="connectionStatus" style="text-align:center;font-size:13px;margin-bottom:6px;">Shared board connected</div>
+<p class="subtitle">Pick one square per game, including preseason. The link opens to the current unlocked game. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
   <div class="identity-bar">
     <span>You are: <strong id="currentPlayerName">Not registered</strong></span>
     <button onclick="openPlayerRegistration()">Change player</button>
@@ -438,7 +439,11 @@ async function loadSharedPicks() {
   }
 
   saveState();
-  games.forEach((_, i) => renderBoard(i));
+
+  // Only render if the board DOM has already been built.
+  if (document.getElementById('boards')?.children.length) {
+    games.forEach((_, i) => renderBoard(i));
+  }
 }
 
 async function saveSharedPick(gameIndex, squareIndex, name, number, autoAssigned=false) {
@@ -456,6 +461,7 @@ function subscribeSharedPicks() {
   sb.channel('vikings-board-picks')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'board_picks' }, async () => {
       await loadSharedPicks();
+      games.forEach((_, i) => renderBoard(i));
     })
     .subscribe();
 }
@@ -717,6 +723,7 @@ function getCurrentBoardIndex() {
 
 function selectCurrentBoard() {
   activeBoard = getCurrentBoardIndex();
+  document.querySelectorAll('.board').forEach((b,n) => b.classList.toggle('active', n === activeBoard));
 }
 
 function renderBoard(i) {
@@ -1190,6 +1197,10 @@ if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
 }
 
 (async function initializeBoard() {
+  // Build once so all DOM targets exist before any shared-state loader can render.
+  buildNav();
+  buildBoards();
+
   await Promise.all([
     loadSharedPicks(),
     loadSharedGameResults()
@@ -1204,7 +1215,6 @@ if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
   syncRelevantScores();
 })();
 
-setInterval(syncRelevantScores, 60000);
 setTimeout(syncRelevantScores, 1200);
 setInterval(syncRelevantScores, 60000);
 </script>
