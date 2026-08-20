@@ -66,7 +66,7 @@
   .board.active { display:block; }
   .week-locked {
     text-align:center;
-    padding:26px 18px;
+    padding:24px 18px;
     border-radius:14px;
     background:#15111a;
     border:1px solid #513d5a;
@@ -300,7 +300,7 @@
 
 <header>
   <h1>🏈 Minnesota Vikings Pick a Square!</h1>
-  <p class="subtitle">Pick one square per game, including preseason. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
+  <p class="subtitle">Pick one square per game, including preseason. The link opens to the current unlocked game. Unclaimed squares are auto-assigned after kickoff. Winning number is based on halftime and final score digits.</p>
   <div class="identity-bar">
     <span>You are: <strong id="currentPlayerName">Not registered</strong></span>
     <button onclick="openPlayerRegistration()">Change player</button>
@@ -314,7 +314,7 @@
   <button class="control secondary" onclick="openAdminReset()">🔒 Admin Reset This Page</button>
 </div>
 <p class="footer-note">
-  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; halftime rollover carries only into the next game's halftime pot, and final rollover carries only into the next game's final pot. Each next game board stays locked until the day after the prior game is completed. The site automatically opens to the current available game when visited.
+  One square per person each game, including preseason. Unclaimed squares are auto-assigned after kickoff. Halftime and final winners are determined by adding the last digit of each team's score and using the last digit of that total. Games marked TBD will not auto-assign until a kickoff time is added. Picks and payout calculations are saved on this device, so refreshing will not reset them. Live Vikings halftime and final scores are checked automatically during games. Players register once on their device as Crissy, Cheryl, Cole, Kellen, Lynda, or Lynea. Their name is then used automatically for picks. Each can have one square per game. If someone has not picked by kickoff, they are auto-assigned to a remaining square. Each claimed square adds $5 to the pot; if the final winning number is not on the board, the pot rolls into the next game.
 </p>
 
 <div class="modal hidden" id="playerModal">
@@ -471,34 +471,23 @@ async function loadSharedGameResults() {
   for (const row of data || []) {
     const s = state[row.game_index];
     if (!s) continue;
-
     if (row.half_result) s.halfResult = row.half_result;
     if (row.final_result) {
       s.finalResult = row.final_result;
-      if (row.completed_at && !s.finalResult.completedAt) {
-        s.finalResult.completedAt = row.completed_at;
-      }
+      if (row.completed_at && !s.finalResult.completedAt) s.finalResult.completedAt = row.completed_at;
     }
   }
 
-  // Rebuild the two independent rollover tracks from the shared results.
   for (let i = 0; i < state.length; i++) {
-    state[i].halfRolloverIn = i > 0 && state[i - 1].halfResult
-      ? Number(state[i - 1].halfResult.rolloverOut || 0)
-      : 0;
-    state[i].finalRolloverIn = i > 0 && state[i - 1].finalResult
-      ? Number(state[i - 1].finalResult.rolloverOut || 0)
-      : 0;
+    state[i].halfRolloverIn =
+      i > 0 && state[i - 1].halfResult ? Number(state[i - 1].halfResult.rolloverOut || 0) : 0;
+    state[i].finalRolloverIn =
+      i > 0 && state[i - 1].finalResult ? Number(state[i - 1].finalResult.rolloverOut || 0) : 0;
   }
-
-  saveState();
 }
 
 async function saveSharedGameResult(gameIndex, period, result) {
-  const payload = {
-    game_index: gameIndex,
-    updated_at: new Date().toISOString()
-  };
+  const payload = { game_index: gameIndex, updated_at: new Date().toISOString() };
 
   if (period === 'half') {
     payload.half_result = result;
@@ -518,10 +507,9 @@ function subscribeSharedGameResults() {
   sb.channel('vikings-board-results')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'board_game_results' }, async () => {
       await loadSharedGameResults();
-      openCurrentWeek();
+      selectCurrentBoard();
       buildNav();
-      document.querySelectorAll('.board').forEach((b,n) => b.classList.toggle('active', n === activeBoard));
-      games.forEach((_, i) => renderBoard(i));
+      buildBoards();
     })
     .subscribe();
 }
@@ -560,7 +548,6 @@ function saveState() {
 
 let state = loadSavedState();
 let selected = null;
-const ACTIVE_BOARD_KEY = "vikings-active-board";
 let activeBoard = 0;
 
 function randomNumbers() {
@@ -618,8 +605,8 @@ function buildBoards() {
         <h3>💵 Payout Calculator</h3>
         <div>Each claimed square = <strong>$5</strong>. Each board uses 6 unique digits from 0–9.</div>
         <div>Base game pot: <strong id="base-pot-${i}">$0.00</strong></div>
-        <div>Halftime rollover entering this game: <strong id="half-rollover-in-${i}">$0.00</strong></div>
-        <div>Final rollover entering this game: <strong id="final-rollover-in-${i}">$0.00</strong></div>
+        <div>Halftime rollover in: <strong id="half-rollover-in-${i}">$0.00</strong></div>
+        <div>Final rollover in: <strong id="final-rollover-in-${i}">$0.00</strong></div>
         <div>Halftime pot: <strong id="half-pot-${i}">$0.00</strong></div>
         <div>Final pot: <strong id="final-pot-${i}">$0.00</strong></div>
 
@@ -696,43 +683,47 @@ function shuffleArray(items) {
 }
 
 
+function startOfNextDay(dateLike) {
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
 function isBoardUnlocked(i) {
   if (i === 0) return true;
+  const prev = state[i - 1];
+  if (!prev || !prev.finalResult) return false;
 
-  const prevGame = games[i - 1];
-  const prevState = state[i - 1];
-
-  if (!prevState || !prevState.finalResult) return false;
-
-  let completedAt = null;
-
-  if (prevState.finalResult.completedAt) {
-    completedAt = new Date(prevState.finalResult.completedAt);
-  } else if (prevGame.kickoff) {
-    completedAt = new Date(prevGame.kickoff);
-  }
-
-  if (!completedAt || Number.isNaN(completedAt.getTime())) return false;
-
-  const unlockAt = new Date(completedAt);
-  unlockAt.setHours(0, 0, 0, 0);
-  unlockAt.setDate(unlockAt.getDate() + 1);
-
-  return Date.now() >= unlockAt.getTime();
+  const completedAt = prev.finalResult.completedAt || games[i - 1].kickoff;
+  const unlockAt = startOfNextDay(completedAt);
+  return unlockAt !== null && Date.now() >= unlockAt;
 }
 
 function lockedBoardMessage(i) {
   if (i === 0) return '';
-  const prevGame = games[i - 1];
-  return `${prevGame.phase === "PRE" ? "Preseason" : "Regular Season"} Week ${prevGame.week} must be completed, and this board will open the following day.`;
+  const prev = games[i - 1];
+  return `${prev.phase === "PRE" ? "Preseason" : "Regular Season"} Week ${prev.week} must be completed. This board opens the next day.`;
+}
+
+function getCurrentBoardIndex() {
+  let current = 0;
+  for (let i = 0; i < games.length; i++) {
+    if (isBoardUnlocked(i)) current = i;
+  }
+  return current;
+}
+
+function selectCurrentBoard() {
+  activeBoard = getCurrentBoardIndex();
 }
 
 function renderBoard(i) {
   const squares = document.getElementById(`squares-${i}`);
   const s = state[i];
-  const lockEl = document.getElementById(`lock-${i}`);
   const unlocked = isBoardUnlocked(i);
-
+  const lockEl = document.getElementById(`lock-${i}`);
   if (lockEl) {
     lockEl.innerHTML = unlocked ? '' :
       `<div class="week-locked"><strong>🔒 Board Locked</strong><p>${lockedBoardMessage(i)}</p></div>`;
@@ -854,16 +845,10 @@ function basePot(i) {
 }
 
 function halfRolloverInto(i) {
-  if (i === 0) return Number(state[i].halfRolloverIn || 0);
-  const prev = state[i - 1];
-  if (prev && prev.halfResult) return Number(prev.halfResult.rolloverOut || 0);
   return Number(state[i].halfRolloverIn || 0);
 }
 
 function finalRolloverInto(i) {
-  if (i === 0) return Number(state[i].finalRolloverIn || 0);
-  const prev = state[i - 1];
-  if (prev && prev.finalResult) return Number(prev.finalResult.rolloverOut || 0);
   return Number(state[i].finalRolloverIn || 0);
 }
 
@@ -913,8 +898,9 @@ async function calculatePayout(i, period) {
     state[i].halfResult = result;
     if (i + 1 < state.length) state[i + 1].halfRolloverIn = result.rolloverOut;
   }
+
   if (period === 'final') {
-    result.completedAt = result.completedAt || new Date().toISOString();
+    result.completedAt = new Date().toISOString();
     state[i].finalResult = result;
     if (i + 1 < state.length) state[i + 1].finalRolloverIn = result.rolloverOut;
   }
@@ -928,12 +914,12 @@ async function calculatePayout(i, period) {
   }
 
   renderBoard(i);
+
   if (period === 'final') {
     await loadSharedGameResults();
-    openCurrentWeek();
+    selectCurrentBoard();
     buildNav();
-    document.querySelectorAll('.board').forEach((b,n) => b.classList.toggle('active', n === activeBoard));
-    if (i + 1 < state.length) renderBoard(i + 1);
+    buildBoards();
   }
 }
 
@@ -1017,31 +1003,8 @@ function renderPayout(i) {
   }
 }
 
-
-function getCurrentWeekIndex() {
-  let latestUnlocked = 0;
-
-  for (let i = 0; i < games.length; i++) {
-    if (isBoardUnlocked(i)) latestUnlocked = i;
-  }
-
-  return latestUnlocked;
-}
-
-function openCurrentWeek() {
-  const i = getCurrentWeekIndex();
-  activeBoard = i;
-  localStorage.setItem(ACTIVE_BOARD_KEY, String(i));
-
-  const boards = document.querySelectorAll('.board');
-  if (boards.length) {
-    boards.forEach((b,n) => b.classList.toggle('active', n === i));
-  }
-}
-
 function showBoard(i) {
   activeBoard = i;
-  localStorage.setItem(ACTIVE_BOARD_KEY, String(i));
   syncGameScore(i);
   autoAssignIfNeeded(i);
   document.querySelectorAll('.board').forEach((b,n)=>b.classList.toggle('active',n===i));
@@ -1164,8 +1127,7 @@ function confirmAdminReset() {
     picked: Array(6).fill(false),
     players: [],
     autoAssigned: false,
-    halfRolloverIn: state[activeBoard].halfRolloverIn || 0,
-    finalRolloverIn: state[activeBoard].finalRolloverIn || 0,
+    rolloverIn: state[activeBoard].rolloverIn || 0,
     halfResult: null,
     finalResult: null
   };
@@ -1227,13 +1189,13 @@ if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
   setTimeout(openPlayerRegistration, 300);
 }
 
-(async function initializeSharedBoard() {
+(async function initializeBoard() {
   await Promise.all([
     loadSharedPicks(),
     loadSharedGameResults()
   ]);
 
-  openCurrentWeek();
+  selectCurrentBoard();
   buildNav();
   buildBoards();
 
@@ -1242,6 +1204,7 @@ if (!currentPlayer || !ALLOWED_PLAYERS.includes(currentPlayer)) {
   syncRelevantScores();
 })();
 
+setInterval(syncRelevantScores, 60000);
 setTimeout(syncRelevantScores, 1200);
 setInterval(syncRelevantScores, 60000);
 </script>
