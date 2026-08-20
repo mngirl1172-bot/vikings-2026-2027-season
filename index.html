@@ -84,7 +84,7 @@ input {
 <body>
 <header>
   <h1>🏈 Minnesota Vikings Pick a Square</h1>
-  <p class="subtitle">Shared live board • one square per player per game • $5 per square</p>
+  <p class="subtitle">Shared live board • 6 paid squares per game • $30 base pot per board</p>
   <div class="identity">You are: <strong id="who">Not registered</strong>
     <button onclick="openRegistration()">Change player</button>
   </div>
@@ -158,21 +158,9 @@ function choosePlayer(name) {
   document.getElementById("playerModal").classList.add("hidden");
 }
 
-function nextDayStart(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate()+1);
-  return d.getTime();
-}
-
 function unlocked(i) {
-  if (i===0) return true;
-  const prev = results[i-1];
-  if (!prev.final || !prev.completedAt) return false;
-  const t = nextDayStart(prev.completedAt);
-  return t!==null && Date.now()>=t;
+  if (i === 0) return true;
+  return !!results[i - 1].final;
 }
 
 function currentIndex() {
@@ -181,7 +169,7 @@ function currentIndex() {
   return idx;
 }
 
-function basePot(i) { return picks[i].length * 5; }
+function basePot(i) { return 30; }
 function halfRollIn(i) { return i>0 && results[i-1].half ? Number(results[i-1].half.rolloverOut||0) : 0; }
 function finalRollIn(i) { return i>0 && results[i-1].final ? Number(results[i-1].final.rolloverOut||0) : 0; }
 function periodPot(i,period) { return basePot(i)+(period==="half"?halfRollIn(i):finalRollIn(i)); }
@@ -235,7 +223,7 @@ function render() {
     ? picks[active].map(p=>`<div class="result-row"><span>${escapeHtml(p.player_name)}${p.auto_assigned?" (auto-assigned)":""}</span><strong>${p.number}</strong></div>`).join("")
     : `<div class="small">No picks yet.</div>`;
 
-  const lockHtml=canUse?"":`<div class="lock-note"><strong>🔒 Board Locked</strong><br>This board opens the day after the previous game is completed.</div>`;
+  const lockHtml=canUse?"":`<div class="lock-note"><strong>🔒 Board Locked</strong><br>This board opens only after the previous game is final.</div>`;
 
   const halfWinner = half
     ? (half.winners?.length ? `${half.winners.map(escapeHtml).join(", ")} — $${Number(half.payoutEach).toFixed(2)}` : `No winner — $${Number(half.rolloverOut).toFixed(2)} rolls to next halftime pot`)
@@ -262,6 +250,7 @@ function render() {
 
       <div class="payout-box">
         <strong>💵 Payouts</strong><br>
+        All 6 squares are paid at $5 each, whether manually chosen or auto-assigned.<br>
         Base pot: <strong>$${basePot(active).toFixed(2)}</strong><br>
         Halftime rollover in: <strong>$${halfRollIn(active).toFixed(2)}</strong> • Halftime pot: <strong>$${periodPot(active,"half").toFixed(2)}</strong><br>
         Final rollover in: <strong>$${finalRollIn(active).toFixed(2)}</strong> • Final pot: <strong>$${periodPot(active,"final").toFixed(2)}</strong><br><br>
