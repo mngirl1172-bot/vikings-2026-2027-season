@@ -128,6 +128,14 @@ input {
 .modal.hidden { display:none; }
 .dialog { width:min(430px,100%); background:#19151e; border:1px solid #4a3a52; border-radius:16px; padding:22px; }
 .player-btn { width:100%; margin:5px 0; }
+.winner-result-box {
+  margin-top:12px;
+  padding:14px 16px;
+  border-radius:12px;
+  background:#17121d;
+  border:1px solid #493750;
+}
+.winner-result-box strong.title { font-size:17px; }
 .small { color:#aaa2b0; font-size:13px; }
 @media(max-width:600px) {
   .card { height:105px; }
@@ -224,6 +232,7 @@ function currentIndex() {
   let idx = 0;
   for (let i = 0; i < games.length; i++) {
     if (unlocked(i)) idx = i;
+    else break;
   }
   return idx;
 }
@@ -301,9 +310,11 @@ function render() {
     ? picks[active].map(p=>`<div class="result-row"><span>${escapeHtml(p.player_name)}${p.auto_assigned?" (auto-assigned)":""}</span><strong>${p.number}</strong></div>`).join("")
     : `<div class="small">No picks yet.</div>`;
 
-  const lockHtml=canUse?"":`<div class="lock-note"><strong>🔒 Board Locked</strong><br>VIEW ONLY — picking is disabled until the immediately previous game is final.</div>`;
+  const lockHtml=canUse?"":`<div class="lock-note"><strong>🔒 Board Locked</strong><br>VIEW ONLY — picking opens after the immediately previous game is final.</div>`;
 
-  const live = liveStatus[active]?.gameIndex === active ? liveStatus[active] : null;
+  const kickoffMs = g.kickoff ? new Date(g.kickoff).getTime() : null;
+  const gameStarted = kickoffMs !== null && Date.now() >= kickoffMs;
+  const live = gameStarted && liveStatus[active]?.gameIndex === active ? liveStatus[active] : null;
   let liveBoardHtml = "";
   if (live && live.found) {
     const periodText = live.status?.periodLabel || live.status?.description || "Game";
@@ -332,25 +343,26 @@ function render() {
         ${possessionText}
       </div>`;
   } else {
-    const kickoffTime = g.kickoff ? new Date(g.kickoff).getTime() : null;
-    const waitingText = !kickoffTime
-      ? "Game time TBD"
-      : (Date.now() < kickoffTime ? "Game has not started" : "Waiting for this game's live data");
     liveBoardHtml = `
       <div class="live-scoreboard">
         <div class="scoreboard-top">
           <div class="scoreboard-status">Live Scoreboard</div>
-          <div class="scoreboard-clock">${waitingText}</div>
+          <div class="scoreboard-clock">Waiting for game data</div>
         </div>
       </div>`;
   }
 
   const halfWinner = half
-    ? (half.winners?.length ? `${half.winners.map(escapeHtml).join(", ")} — $${Number(half.payoutEach).toFixed(2)}` : `No winner — $${Number(half.rolloverOut).toFixed(2)} rolls to next halftime pot`)
-    : "Not calculated yet";
+    ? (half.winners?.length
+        ? `<strong>${half.winners.map(escapeHtml).join(", ")}</strong><br>Winning number: <strong>${half.winningNumber}</strong><br>Payout: <strong>$${Number(half.payoutEach).toFixed(2)}</strong>`
+        : `No halftime winner<br>Winning number: <strong>${half.winningNumber}</strong><br>Rollover: <strong>$${Number(half.rolloverOut).toFixed(2)}</strong>`)
+    : "Halftime result not available yet";
+
   const finalWinner = final
-    ? (final.winners?.length ? `${final.winners.map(escapeHtml).join(", ")} — $${Number(final.payoutEach).toFixed(2)}` : `No winner — $${Number(final.rolloverOut).toFixed(2)} rolls to next final pot`)
-    : "Not calculated yet";
+    ? (final.winners?.length
+        ? `<strong>${final.winners.map(escapeHtml).join(", ")}</strong><br>Winning number: <strong>${final.winningNumber}</strong><br>Payout: <strong>$${Number(final.payoutEach).toFixed(2)}</strong>`
+        : `No final winner<br>Winning number: <strong>${final.winningNumber}</strong><br>Rollover: <strong>$${Number(final.rolloverOut).toFixed(2)}</strong>`)
+    : "Final result not available yet";
 
   document.getElementById("main").innerHTML=`
     <section class="board active">
@@ -367,6 +379,16 @@ function render() {
       <div class="winner-note">
         <strong>🏆 Winner Rule</strong><br>
         Add the last digit of each team's score. Use the last digit of that total as the winning number.
+      </div>
+
+      <div class="winner-result-box">
+        <strong class="title">🏆 Halftime Winner</strong><br>
+        ${halfWinner}
+      </div>
+
+      <div class="winner-result-box">
+        <strong class="title">🏆 Final Winner</strong><br>
+        ${finalWinner}
       </div>
 
       <div class="payout-box">
@@ -422,11 +444,10 @@ async function loadAll() {
 
 async function pickSquare(square) {
   if (!unlocked(active)) {
-    alert("This week is view-only. Picking opens after the previous game is final.");
-    render();
+    alert("This future week is view-only. Picking opens after the previous game is final.");
     return;
   }
-  if (!currentPlayer) { openRegistration(); return; }
+if (!currentPlayer) { openRegistration(); return; }
   if (!unlocked(active)) return;
   const g=games[active];
   if (g.kickoff && Date.now()>=new Date(g.kickoff).getTime()) {
@@ -594,6 +615,17 @@ async function syncScore(i) {
 
   if (!data) return false;
 
+  const normalizeTeam = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const expectedOpponent = normalizeTeam(g.opponent);
+  const receivedOpponent = normalizeTeam(data.opponent?.name || "");
+  if (!receivedOpponent ||
+      !(receivedOpponent === expectedOpponent ||
+        receivedOpponent.includes(expectedOpponent) ||
+        expectedOpponent.includes(receivedOpponent))) {
+    console.warn("Ignoring mismatched score feed", g.opponent, data.opponent?.name);
+    return false;
+  }
+
   liveStatus[i] = {...data, gameIndex:i};
   if (i === active) render();
 
@@ -621,11 +653,10 @@ async function syncRelevantScores() {
     if (!g.kickoff) continue;
 
     const kickoff = new Date(g.kickoff).getTime();
-    const shouldCheck =
-      kickoff <= now &&
-      (!results[i].half || !results[i].final);
+    if (now < kickoff) continue;
+    if (results[i].half && results[i].final) continue;
 
-    if (shouldCheck) tasks.push(syncScore(i));
+    tasks.push(syncScore(i));
   }
 
   if (tasks.length) await Promise.allSettled(tasks);
@@ -637,9 +668,8 @@ async function syncRelevantScores() {
 }
 
 async function refresh() {
-  const viewed = active;
   await loadAll();
-  active = Math.min(Math.max(viewed, 0), games.length - 1);
+  active=currentIndex();
   renderNav();
   render();
 }
@@ -668,15 +698,6 @@ async function init() {
     document.getElementById("main").innerHTML=`<div class="lock-note"><strong>Board could not load.</strong><br>${escapeHtml(e.message||e)}</div>`;
   }
 }
-document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible") {
-    await loadAll();
-    active = currentIndex();
-    renderNav();
-    render();
-  }
-});
-
 init();
 </script>
 </body>
