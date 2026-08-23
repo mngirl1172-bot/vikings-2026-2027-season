@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • 6 paid squares • $30 base pot</div>
+<div class="sub">Shared live board • 6 paid squares • $30 base pot • Winner Fix v2</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -100,10 +100,21 @@ function canPick(i){if(!unlocked(i))return false;const k=games[i].kickoff;if(!k)
 
 function winningNumber(v,o){return ((Math.abs(Number(v))%10)+(Math.abs(Number(o))%10))%10}
 function winnerFor(i,period){
-  const s=scores[i]?.[period]; if(!s)return null;
+  const s=scores[i]?.[period];
+  if(!s) return null;
+
   const wn=winningNumber(s.vik,s.opp);
-  const p=picks[i].find(x=>Number(numbers[i][x.square_index])===wn);
-  return {winningNumber:wn,player:p?.player_name||null,square:p?.square_index??null};
+  const winningSquare=numbers[i].findIndex(n=>Number(n)===Number(wn));
+  if(winningSquare<0){
+    return {winningNumber:wn,player:null,square:null};
+  }
+
+  const owner=picks[i].find(x=>Number(x.square_index)===Number(winningSquare));
+  return {
+    winningNumber:wn,
+    player:owner?.player_name||null,
+    square:Number(winningSquare)
+  };
 }
 function rolloverIn(i,period){
   if(i===0)return 0;
@@ -115,7 +126,8 @@ function rolloverIn(i,period){
 function periodPot(i,period){return 30+rolloverIn(i,period)}
 function squareClass(i,j){
   const h=winnerFor(i,"half"),f=winnerFor(i,"final");
-  const hw=h?.square===j,fw=f?.square===j;
+  const hw=h?.square!==null && Number(h?.square)===Number(j);
+  const fw=f?.square!==null && Number(f?.square)===Number(j);
   if(hw&&fw)return ["both","HALF + FINAL"];
   if(hw)return ["half","HALF"];
   if(fw)return ["final","FINAL"];
@@ -140,7 +152,7 @@ function outcomeHtml(i,period){
   const s=scores[i][period]; if(!s)return `${period==="half"?"Halftime":"Final"} result not available yet`;
   const w=winnerFor(i,period),pot=periodPot(i,period);
   const math=`${Math.abs(Number(s.vik))%10} + ${Math.abs(Number(s.opp))%10} = ${w.winningNumber}`;
-  if(w.player)return `<strong>${esc(w.player)}</strong><br>Winning number: <strong>${w.winningNumber}</strong> (${math})<br>Payout: <strong>$${pot.toFixed(2)}</strong>`;
+  if(w.player)return `<strong>${esc(w.player)}</strong><br>Winning number: <strong>${w.winningNumber}</strong> (${math})<br>Winning square: <strong>${Number(w.square)+1}</strong><br>Payout: <strong>$${pot.toFixed(2)}</strong>`;
   return `No winner<br>Winning number: <strong>${w.winningNumber}</strong> (${math})<br>Rollover: <strong>$${pot.toFixed(2)}</strong>`;
 }
 
@@ -158,7 +170,7 @@ function render(){
     <h2>Vikings ${g.location.includes("AWAY")?"@":"vs."} ${esc(g.opponent)}</h2>
     <div class="meta">${g.date} • ${g.time} • ${g.location}</div>
     ${scoreboardHtml(active)}
-    <div class="box"><strong>HALFTIME SCORE</strong><br>${half?`Vikings ${half.vik} — ${esc(g.opponent)} ${half.opp}`:"Not recorded yet"}</div>
+    <div class="box"><strong>HALFTIME SCORE ONLY</strong><br>${half?`Vikings ${half.vik} — ${esc(g.opponent)} ${half.opp}`:"Not recorded yet"}</div>
     ${!unlocked(active)?`<div class="viewonly">VIEW ONLY — picking opens after the immediately previous game is final.</div>`:""}
     <div class="squares">${cards}</div>
     <div class="box"><strong>Players & Numbers</strong>${rows}</div>
