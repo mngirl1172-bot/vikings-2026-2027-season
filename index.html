@@ -111,8 +111,8 @@ main { width:min(980px,100%); margin:0 auto; padding:20px 12px 40px; }
 }
 .owner { font-size:16px; color:#4a246d; font-weight:900; }
 .winner-tag { font-size:12px; font-weight:900; letter-spacing:.05em; }
-.winner-half .back { outline:5px solid #fff; }
-.winner-final .back { box-shadow:inset 0 0 0 6px #fff,0 10px 28px rgba(0,0,0,.35); }
+.winner-half .back { outline:4px solid #999; }
+.winner-final .back { box-shadow:inset 0 0 0 5px #666,0 10px 28px rgba(0,0,0,.35); }
 .winner-both .back { outline:4px solid #999; box-shadow:inset 0 0 0 5px #666,0 10px 28px rgba(0,0,0,.35); }
 .status { text-align:center; color:#c8c1ce; min-height:23px; }
 .result-row { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #28232c; }
@@ -261,21 +261,15 @@ function finalRollIn(i) {
 }
 function periodPot(i,period) { return basePot(i)+(period==="half"?halfRollIn(i):finalRollIn(i)); }
 
-function winnerStatus(i, square) {
-  const p = picks[i].find(x => Number(x.square_index) === Number(square));
-  if (!p) return {cls:"", tag:""};
-
-  const squareNumber = Number(p.number);
-  const halfWinningNumber = results[i].half ? Number(results[i].half.winningNumber) : null;
-  const finalWinningNumber = results[i].final ? Number(results[i].final.winningNumber) : null;
-
-  const h = halfWinningNumber !== null && squareNumber === halfWinningNumber;
-  const f = finalWinningNumber !== null && squareNumber === finalWinningNumber;
-
-  if (h && f) return {cls:"winner-both", tag:"HALF + FINAL"};
-  if (h) return {cls:"winner-half", tag:"HALF"};
-  if (f) return {cls:"winner-final", tag:"FINAL"};
-  return {cls:"", tag:""};
+function winnerStatus(i,square) {
+  const p = picks[i].find(x=>x.square_index===square);
+  if (!p) return {cls:"",tag:""};
+  const h = results[i].half && Number(p.number)===Number(results[i].half.winningNumber);
+  const f = results[i].final && Number(p.number)===Number(results[i].final.winningNumber);
+  if (h&&f) return {cls:"winner-both",tag:"HALF + FINAL"};
+  if (h) return {cls:"winner-half",tag:"HALF"};
+  if (f) return {cls:"winner-final",tag:"FINAL"};
+  return {cls:"",tag:""};
 }
 
 function renderNav() {
@@ -291,11 +285,9 @@ function render() {
   const canUse=unlocked(active);
   const half=results[active].half;
   const final=results[active].final;
-  const scoreHtml = final
-    ? `<strong>FINAL:</strong> Vikings ${final.vik} — ${g.opponent} ${final.opp}`
-    : half
-      ? `<strong>HALFTIME:</strong> Vikings ${half.vik} — ${g.opponent} ${half.opp}`
-      : `<strong>Scores:</strong> waiting for game data`;
+  const scoreHtml = half
+    ? `<strong>HALFTIME:</strong> Vikings ${half.vik} — ${g.opponent} ${half.opp}`
+    : `<strong>HALFTIME:</strong> Not recorded yet`;
 
   const cards=numbers[active].map((num,j)=>{
     const p=picks[active].find(x=>x.square_index===j);
@@ -390,6 +382,11 @@ function render() {
       <div class="winner-result-box">
         <strong class="title">🏆 Halftime Winner</strong><br>
         ${halfWinner}
+      </div>
+
+      <div class="winner-result-box">
+        <strong class="title">🏆 Final Winner</strong><br>
+        ${finalWinner}
       </div>
 
       <div class="payout-box">
@@ -495,7 +492,7 @@ function winningNumber(v,o) { return ((Math.abs(Number(v))%10)+(Math.abs(Number(
 
 async function saveResult(i,period,v,o) {
   const wn=winningNumber(v,o);
-  const winners = picks[i].filter(p => Number(p.number) === Number(wn)).map(p => p.player_name);
+  const winners=picks[i].filter(p=>Number(p.number)===wn).map(p=>p.player_name);
   const pot=periodPot(i,period);
   const result={
     vik:Number(v),opp:Number(o),winningNumber:wn,winners,
