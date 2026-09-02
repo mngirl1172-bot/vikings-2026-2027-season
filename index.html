@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • 6 paid squares • $30 base pot • Winner Fix v2</div>
+<div class="sub">Shared live board • 6 paid squares • $30 base pot • Auto Sync v3</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -220,28 +220,83 @@ async function autoAssign(i){
 
 function scoreDate(g){if(!g.kickoff)return null;const d=new Date(g.kickoff);return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`}
 async function saveScore(i,period,v,o){
+  const score={vik:Number(v),opp:Number(o)};
   const payload={game_index:i,updated_at:new Date().toISOString()};
-  if(period==="half")payload.half_result={vik:Number(v),opp:Number(o)};
-  else{payload.final_result={vik:Number(v),opp:Number(o)};payload.completed_at=new Date().toISOString()}
+
+  if(period==="half"){
+    payload.half_result=score;
+  }else{
+    payload.final_result=score;
+    payload.completed_at=new Date().toISOString();
+  }
+
   const {error}=await sb.from("board_game_results").upsert(payload,{onConflict:"game_index"});
-  if(error)console.warn("save score",error);
+  if(error){
+    console.warn("save score",error);
+    return false;
+  }
+
+  scores[i][period]=score;
+
+  if(i===active){
+    renderNav();
+    render();
+  }
+
+  return true;
 }
 async function syncGame(i){
-  const g=games[i],d=scoreDate(g);if(!d||!g.kickoff||Date.now()<new Date(g.kickoff).getTime())return;
+  const g=games[i],d=scoreDate(g);
+  if(!d||!g.kickoff||Date.now()<new Date(g.kickoff).getTime())return;
+
   try{
     const r=await fetch(`${SCORE_URL}?date=${d}&opponent=${encodeURIComponent(g.opponent)}`,{cache:"no-store"});
-    if(!r.ok)return;const data=await r.json();if(!data?.found)return;
+    if(!r.ok)return;
+
+    const data=await r.json();
+    if(!data?.found)return;
+
     const norm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
     if(norm(data.opponent?.name)!==norm(g.opponent))return;
+
     live[i]={...data,gameIndex:i};
-    if(data.vikings?.halftime!=null&&data.opponent?.halftime!=null&&!scores[i].half)await saveScore(i,"half",data.vikings.halftime,data.opponent.halftime);
-    if(data.final?.vikings!=null&&data.final?.opponent!=null&&!scores[i].final)await saveScore(i,"final",data.final.vikings,data.final.opponent);
-    if(i===active)render();
-  }catch(e){console.warn(e)}
+    let changed=false;
+
+    if(data.vikings?.halftime!=null&&data.opponent?.halftime!=null&&!scores[i].half){
+      changed=(await saveScore(i,"half",data.vikings.halftime,data.opponent.halftime))||changed;
+    }
+
+    if(data.final?.vikings!=null&&data.final?.opponent!=null&&!scores[i].final){
+      changed=(await saveScore(i,"final",data.final.vikings,data.final.opponent))||changed;
+    }
+
+    if(changed){
+      await loadAll();
+    }
+
+    if(i===active){
+      renderNav();
+      render();
+    }
+  }catch(e){
+    console.warn("score sync",e);
+  }
 }
 async function syncRelevant(){
   const now=Date.now();
-  for(let i=0;i<games.length;i++){const k=games[i].kickoff;if(k&&now>=new Date(k).getTime()&&(!scores[i].half||!scores[i].final))syncGame(i)}
+  const jobs=[];
+
+  for(let i=0;i<games.length;i++){
+    const k=games[i].kickoff;
+    if(k&&now>=new Date(k).getTime()&&(!scores[i].half||!scores[i].final)){
+      jobs.push(syncGame(i));
+    }
+  }
+
+  if(jobs.length)await Promise.allSettled(jobs);
+
+  const el=document.getElementById("syncStatus");
+  if(el)el.textContent=`Live scores checked ${new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"})}`;
 }
 async function refresh(jumpToCurrent=false){const viewed=active;await loadAll();active=jumpToCurrent?currentIndex():viewed;renderNav();render()}
 
