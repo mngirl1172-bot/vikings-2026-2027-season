@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • 6 paid squares • $30 base pot • Auto Sync v3</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
+<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v4</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -123,7 +123,7 @@ function rolloverIn(i,period){
   const prevWinner=winnerFor(i-1,period);
   return prevWinner?.player?0:periodPot(i-1,period);
 }
-function periodPot(i,period){return 30+rolloverIn(i,period)}
+function periodPot(i,period){return 15+rolloverIn(i,period)}
 function squareClass(i,j){
   const h=winnerFor(i,"half"),f=winnerFor(i,"final");
   const hw=h?.square!==null && Number(h?.square)===Number(j);
@@ -176,7 +176,7 @@ function render(){
     <div class="box"><strong>Players & Numbers</strong>${rows}</div>
     <div class="box"><strong>🏆 Halftime Winner</strong><br>${outcomeHtml(active,"half")}</div>
     <div class="box"><strong>🏆 Final Winner</strong><br>${outcomeHtml(active,"final")}</div>
-    <div class="box"><strong>💵 Pots</strong><br>Base pot: <strong>$30.00</strong><br>Halftime rollover in: <strong>$${rolloverIn(active,"half").toFixed(2)}</strong> • Halftime pot: <strong>$${periodPot(active,"half").toFixed(2)}</strong><br>Final rollover in: <strong>$${rolloverIn(active,"final").toFixed(2)}</strong> • Final pot: <strong>$${periodPot(active,"final").toFixed(2)}</strong>${g.phase==="PRE"?"<br><span class='small'>Preseason rollover resets before Regular Season Week 1.</span>":""}</div>
+    <div class="box"><strong>💵 $30 Total Board Pot</strong><br>Halftime base: <strong>$15.00</strong><br>Halftime rollover in: <strong>$${rolloverIn(active,"half").toFixed(2)}</strong> • Halftime payout: <strong>$${periodPot(active,"half").toFixed(2)}</strong><br><br>Final base: <strong>$15.00</strong><br>Final rollover in: <strong>$${rolloverIn(active,"final").toFixed(2)}</strong> • Final payout: <strong>$${periodPot(active,"final").toFixed(2)}</strong>${g.phase==="PRE"?"<br><span class='small'>Preseason rollover resets before Regular Season Week 1.</span>":""}</div>
   </section>`;
 }
 
