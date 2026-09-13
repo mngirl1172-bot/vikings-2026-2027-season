@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v4</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
+<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v5</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -124,6 +124,36 @@ function rolloverIn(i,period){
   return prevWinner?.player?0:periodPot(i-1,period);
 }
 function periodPot(i,period){return 15+rolloverIn(i,period)}
+function accruedWinnings(){
+  const totals=Object.fromEntries(PLAYERS.map(p=>[p,0]));
+
+  for(let i=0;i<games.length;i++){
+    for(const period of ["half","final"]){
+      const result=scores[i]?.[period];
+      if(!result) continue;
+
+      const winner=winnerFor(i,period);
+      if(winner?.player && Object.prototype.hasOwnProperty.call(totals,winner.player)){
+        totals[winner.player]+=periodPot(i,period);
+      }
+    }
+  }
+
+  return totals;
+}
+
+function winningsTableHtml(){
+  const totals=accruedWinnings();
+  const grandTotal=PLAYERS.reduce((sum,p)=>sum+totals[p],0);
+
+  return `<div class="box">
+    <strong>💰 Accrued Winnings by Player</strong>
+    <div class="small">Season-to-date winnings from completed halftime and final results.</div>
+    ${PLAYERS.map(p=>`<div class="row"><span>${esc(p)}</span><strong>$${totals[p].toFixed(2)}</strong></div>`).join("")}
+    <div class="row"><span><strong>Total Winnings</strong></span><strong>$${grandTotal.toFixed(2)}</strong></div>
+  </div>`;
+}
+
 function squareClass(i,j){
   const h=winnerFor(i,"half"),f=winnerFor(i,"final");
   const hw=h?.square!==null && Number(h?.square)===Number(j);
@@ -177,6 +207,7 @@ function render(){
     <div class="box"><strong>🏆 Halftime Winner</strong><br>${outcomeHtml(active,"half")}</div>
     <div class="box"><strong>🏆 Final Winner</strong><br>${outcomeHtml(active,"final")}</div>
     <div class="box"><strong>💵 $30 Total Board Pot</strong><br>Halftime base: <strong>$15.00</strong><br>Halftime rollover in: <strong>$${rolloverIn(active,"half").toFixed(2)}</strong> • Halftime payout: <strong>$${periodPot(active,"half").toFixed(2)}</strong><br><br>Final base: <strong>$15.00</strong><br>Final rollover in: <strong>$${rolloverIn(active,"final").toFixed(2)}</strong> • Final payout: <strong>$${periodPot(active,"final").toFixed(2)}</strong>${g.phase==="PRE"?"<br><span class='small'>Preseason rollover resets before Regular Season Week 1.</span>":""}</div>
+    ${winningsTableHtml()}
   </section>`;
 }
 
