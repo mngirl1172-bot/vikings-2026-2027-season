@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v5</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
+<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v6</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -128,6 +128,8 @@ function accruedWinnings(){
   const totals=Object.fromEntries(PLAYERS.map(p=>[p,0]));
 
   for(let i=0;i<games.length;i++){
+    // Accrued winnings table is regular season only.
+    if(games[i].phase!=="REG") continue;
     for(const period of ["half","final"]){
       const result=scores[i]?.[period];
       if(!result) continue;
@@ -148,7 +150,7 @@ function winningsTableHtml(){
 
   return `<div class="box">
     <strong>💰 Accrued Winnings by Player</strong>
-    <div class="small">Season-to-date winnings from completed halftime and final results.</div>
+    <div class="small">Regular-season winnings only. Preseason winnings are not included.</div>
     ${PLAYERS.map(p=>`<div class="row"><span>${esc(p)}</span><strong>$${totals[p].toFixed(2)}</strong></div>`).join("")}
     <div class="row"><span><strong>Total Winnings</strong></span><strong>$${grandTotal.toFixed(2)}</strong></div>
   </div>`;
