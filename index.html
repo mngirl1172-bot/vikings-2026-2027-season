@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v6</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
+<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v7 — Official results only</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -295,11 +295,18 @@ async function syncGame(i){
     live[i]={...data,gameIndex:i};
     let changed=false;
 
-    if(data.vikings?.halftime!=null&&data.opponent?.halftime!=null&&!scores[i].half){
+    // Do not award halftime based on live first/second-quarter score.
+    const period=Number(data.status?.period);
+    const label=String(data.status?.periodLabel||"").toLowerCase();
+    const completed=data.status?.completed===true;
+    const halftimeConfirmed=completed||period>=3||label.includes("halftime")||label.includes("half time");
+    const finalConfirmed=completed;
+
+    if(halftimeConfirmed&&data.vikings?.halftime!=null&&data.opponent?.halftime!=null&&!scores[i].half){
       changed=(await saveScore(i,"half",data.vikings.halftime,data.opponent.halftime))||changed;
     }
 
-    if(data.final?.vikings!=null&&data.final?.opponent!=null&&!scores[i].final){
+    if(finalConfirmed&&data.final?.vikings!=null&&data.final?.opponent!=null&&!scores[i].final){
       changed=(await saveScore(i,"final",data.final.vikings,data.final.opponent))||changed;
     }
 
