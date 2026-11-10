@@ -263,7 +263,7 @@ async function saveScore(i,period,v,o){
     payload.completed_at=new Date().toISOString();
   }
 
-  const {error}=await sb.from("board_game_results").upsert(payload,{onConflict:"game_index"});
+  const {error}=await sb.from("board_game_results").upsert({...scores[i],...payload,half_result:period==="half"?score:scores[i].half,final_result:period==="final"?score:scores[i].final},{onConflict:"game_index"});
   if(error){
     console.warn("save score",error);
     return false;
@@ -284,13 +284,13 @@ async function syncGame(i){
 
   try{
     const r=await fetch(`${SCORE_URL}?date=${d}&opponent=${encodeURIComponent(g.opponent)}`,{cache:"no-store"});
-    if(!r.ok)return;
+    if(!r.ok){console.warn("Score service HTTP",r.status);return;}
 
     const data=await r.json();
-    if(!data?.found)return;
+    if(!data?.found){console.warn("Score service did not find game",g.opponent,d,data);return;}
 
     const norm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
-    if(norm(data.opponent?.name)!==norm(g.opponent))return;
+    if(norm(data.opponent?.name)!==norm(g.opponent)){console.warn("Opponent mismatch",data.opponent?.name,g.opponent);return;}
 
     live[i]={...data,gameIndex:i};
     let changed=false;
