@@ -37,7 +37,7 @@ button{font:inherit} .nav button,.identity button,.btn{border:1px solid #553c63;
 <body>
 <header>
 <h1>🏈 Minnesota Vikings Pick a Square</h1>
-<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v7 — Official results only</div><div class="small" id="syncStatus">Live scores check every 20 seconds</div>
+<div class="sub">Shared live board • $30 total pot • $15 halftime + $15 final • Auto Sync v7 — Official results only</div><div class="small" id="syncStatus">Checking live updates…</div>
 <div class="identity">You are: <strong id="who">Not registered</strong><button onclick="openRegistration()">Change player</button></div>
 <div class="nav" id="nav"></div>
 </header>
@@ -328,7 +328,7 @@ async function syncRelevant(){
 
   for(let i=0;i<games.length;i++){
     const k=games[i].kickoff;
-    if(k&&now>=new Date(k).getTime()&&(!scores[i].half||!scores[i].final)){
+    if(k&&now>=new Date(k).getTime()&&(now-new Date(k).getTime()<8*60*60*1000||!scores[i].half||!scores[i].final)){
       jobs.push(syncGame(i));
     }
   }
@@ -357,6 +357,9 @@ async function init(){
     for(let i=0;i<games.length;i++)await autoAssign(i);
     await syncRelevant();
     setInterval(syncRelevant,20000);
+    // Fallback for missed realtime events and stale open browser tabs.
+    setInterval(()=>refresh(false).catch(e=>console.warn("board refresh",e)),15000);
+    document.addEventListener("visibilitychange",()=>{if(!document.hidden){refresh(false).catch(console.warn);syncRelevant().catch(console.warn)}});
   }catch(e){
     document.getElementById("main").innerHTML=`<div class="box"><strong>Board could not load.</strong><br>${esc(e.message||e)}</div>`;
   }
